@@ -18,6 +18,3 @@ pub mod revoke_grant;
 
 pub use set_paused::*;
 pub mod set_paused;
-
-pub use set_record_status::*;
-pub mod set_record_status;

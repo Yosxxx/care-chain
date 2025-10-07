@@ -1,27 +1,41 @@
+use crate::errors::HospitalError;
+use crate::event::HospitalRegistered;
 use crate::states::*;
 use anchor_lang::prelude::*;
-use crate::errors::ErrorState;
-use crate::event::HospitalRegistered;
 
-pub fn hospitals_register(ctx: Context<RegisterHospitals>, name: String, kms_ref: String) -> Result<()> {
-    require!(name.len() <= MAX_NAME_LEN, ErrorState::InvalidArgs);
-    require!(kms_ref.len() <= MAX_KMS_REF_LEN, ErrorState::InvalidArgs);
+pub fn hospitals_register(
+    ctx: Context<RegisterHospitals>,
+    name: String,
+    kms_ref: String,
+) -> Result<()> {
+    let name_trim = name.trim();
+    require!(!name_trim.is_empty(), HospitalError::EmptyName);
+    require!(name_trim.len() <= MAX_NAME_LEN, HospitalError::NameTooLong);
 
-    let h = &mut ctx.accounts.hospital;
-    h.authority = ctx.accounts.hospital_authority.key();
-    h.name = name.clone();
-    h.kms_ref = kms_ref.clone();
-    h.registered_by = ctx.accounts.admin.key();
-    h.created_at = Clock::get()?.unix_timestamp;
-    h.bump = ctx.bumps.hospital;
+    let kms_trim = kms_ref.trim();
+    require!(!kms_trim.is_empty(), HospitalError::EmptyKmsRef);
+    require!(
+        kms_trim.len() <= MAX_KMS_REF_LEN,
+        HospitalError::KmsRefTooLong
+    );
+
+    let now = Clock::get()?.unix_timestamp;
+    let hospital = &mut ctx.accounts.hospital;
+
+    hospital.authority = ctx.accounts.hospital_authority.key();
+    hospital.name = name_trim.to_string();
+    hospital.kms_ref = kms_trim.to_string();
+    hospital.registered_by = ctx.accounts.registrar.key();
+    hospital.created_at = now;
+    hospital.bump = ctx.bumps.hospital;
 
     emit!(HospitalRegistered {
-        hospital: h.key(),
-        authority: h.authority,
-        name,
-        kms_ref,
-        registered_by: h.registered_by,
-        timestamp: h.created_at,
+        hospital: hospital.key(),
+        hospital_authority: hospital.authority,
+        name: hospital.name.clone(),
+        kms_ref: hospital.kms_ref.clone(),
+        registered_by: hospital.registered_by,
+        created_at: now,
     });
 
     Ok(())
@@ -30,21 +44,21 @@ pub fn hospitals_register(ctx: Context<RegisterHospitals>, name: String, kms_ref
 #[derive(Accounts)]
 pub struct RegisterHospitals<'info> {
     #[account(mut)]
-    pub hospital_authority: Signer<'info>,
+    pub registrar: Signer<'info>,
 
     #[account(
-        constraint = !config.paused @ ErrorState::Paused
+        seeds = [SEED_CONFIG],
+        bump = config.bump,
+        constraint = config.authority == registrar.key() @ HospitalError::UnauthorizedRegistrar,
+        constraint = !config.paused @ HospitalError::Paused
     )]
     pub config: Account<'info, Config>,
 
-    #[account(
-        constraint = admin.key() == config.authority @ ErrorState::Unauthorized
-    )]
-    pub admin: Signer<'info>,
+    pub hospital_authority: SystemAccount<'info>,
 
     #[account(
-        init, 
-        payer = hospital_authority,
+        init,
+        payer = registrar,
         space = 8 + Hospital::INIT_SPACE,
         seeds = [SEED_HOSPITAL, hospital_authority.key().as_ref()],
         bump
