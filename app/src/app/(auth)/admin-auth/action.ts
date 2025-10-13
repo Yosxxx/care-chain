@@ -32,5 +32,5 @@ export default async function AdminLogin(formData: FormData) {
     }
 
     // 3. Redirect to admin dashboard
-    redirect("/admin/dashboard");
+    redirect("/hospital/dashboard");
 }
