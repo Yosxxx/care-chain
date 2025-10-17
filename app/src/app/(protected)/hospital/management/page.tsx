@@ -1,72 +1,97 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import InviteDoctorModal from "@/components/invite-doctor-modal";
-import { ReadDoctors } from "./action";
+import InviteDoctorDialog from "@/components/invite-doctor-dialog";
+import DeleteDoctorDialog from "@/components/delete-doctor-dialog";
+import { ReadDoctors, DeleteDoctor } from "./action";
 import { MdDelete } from "react-icons/md";
 
+type Doctor = {
+    doctor_id: string;
+    name?: string | null;
+    specialization?: string | null;
+    status?: string | null;
+    email?: string | null;
+};
+
 export default function Page() {
-    const [modal, setModal] = useState(false);
-    const [doctors, setDoctors] = useState<any[]>([]);
+    const [inviteOpen, setInviteOpen] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [targetDoctor, setTargetDoctor] = useState<Doctor | null>(null);
+
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
-    const [filtered, setFiltered] = useState<any[]>([]);
+    const [removing, setRemoving] = useState(false);
 
-    // --- Fetch doctors once on load ---
-    useEffect(() => {
-        async function fetchDoctors() {
-            try {
-                const data = await ReadDoctors();
-                setDoctors(data || []);
-                setFiltered(data || []); // initialize filtered list
-            } catch (err) {
-                console.error("Error fetching doctors:", err);
-            } finally {
-                setLoading(false);
-            }
+    async function fetchDoctors() {
+        try {
+            setLoading(true);
+            const data = await ReadDoctors();
+            setDoctors((data || []) as Doctor[]);
+        } catch (err) {
+            console.error("Error fetching doctors:", err);
+        } finally {
+            setLoading(false);
         }
+    }
+
+    useEffect(() => {
         fetchDoctors();
     }, []);
 
-    // --- Search effect with debounce ---
-    useEffect(() => {
-        const delay = setTimeout(() => {
-            if (!searchTerm.trim()) {
-                setFiltered(doctors);
-            } else {
-                const term = searchTerm.toLowerCase();
-                setFiltered(
-                    doctors.filter(
-                        (doc) =>
-                            doc.name?.toLowerCase().includes(term) ||
-                            doc.specialization?.toLowerCase().includes(term) ||
-                            doc.status?.toLowerCase().includes(term),
-                    ),
-                );
-            }
-        }, 300);
-
-        return () => clearTimeout(delay);
+    const filtered = useMemo(() => {
+        if (!searchTerm.trim()) return doctors;
+        const term = searchTerm.toLowerCase();
+        return doctors.filter(
+            (d) =>
+                d.name?.toLowerCase().includes(term) ||
+                d.specialization?.toLowerCase().includes(term) ||
+                d.status?.toLowerCase().includes(term) ||
+                d.email?.toLowerCase().includes(term) ||
+                d.doctor_id?.toLowerCase().includes(term),
+        );
     }, [searchTerm, doctors]);
 
+    async function handleConfirmDelete() {
+        if (!targetDoctor) return;
+        try {
+            setRemoving(true);
+            await DeleteDoctor(targetDoctor.doctor_id);
+            setDeleteOpen(false);
+            setTargetDoctor(null);
+            await fetchDoctors();
+        } finally {
+            setRemoving(false);
+        }
+    }
+
     return (
-        <main>
-            {/* INVITE MODAL */}
-            {modal && (
-                <div
-                    className="fixed inset-0 z-50 grid place-items-center bg-black/40"
-                    onClick={() => setModal(false)}
-                >
-                    <div onClick={(e) => e.stopPropagation()}>
-                        <InviteDoctorModal setModal={setModal} />
-                    </div>
-                </div>
-            )}
+        <main className="space-y-6">
+            {/* INVITE DIALOG (controlled) */}
+            <InviteDoctorDialog
+                open={inviteOpen}
+                onOpenChange={setInviteOpen}
+                onSubmitted={fetchDoctors}
+            />
+
+            {/* DELETE CONFIRM DIALOG */}
+            <DeleteDoctorDialog
+                open={deleteOpen}
+                onOpenChange={setDeleteOpen}
+                doctorName={
+                    targetDoctor?.name ??
+                    targetDoctor?.email ??
+                    targetDoctor?.doctor_id
+                }
+                loading={removing}
+                onConfirm={handleConfirmDelete}
+            />
 
             {/* HEADER */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center justify-between">
                 <h1 className="text-4xl font-bold">Medical Staff</h1>
                 <div className="flex gap-2">
                     <Input
@@ -75,7 +100,7 @@ export default function Page() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-64"
                     />
-                    <Button onClick={() => setModal(true)}>
+                    <Button onClick={() => setInviteOpen(true)}>
                         Invite Doctor
                     </Button>
                 </div>
@@ -121,7 +146,15 @@ export default function Page() {
                                     {doc.status || "—"}
                                 </td>
                                 <td className="border p-2">
-                                    <MdDelete />
+                                    <button
+                                        aria-label="Delete doctor"
+                                        onClick={() => {
+                                            setTargetDoctor(doc);
+                                            setDeleteOpen(true);
+                                        }}
+                                    >
+                                        <MdDelete />
+                                    </button>
                                 </td>
                             </tr>
                         ))

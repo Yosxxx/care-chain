@@ -61,7 +61,7 @@ async function LinkHospital(
     return data ?? null;
 }
 
-// CREATE
+// LINK
 export async function InviteDoctor(formData: FormData) {
     const supabaseSSR = await createClientSSR();
     const supabaseService = await createClientService();
@@ -115,8 +115,24 @@ export async function ReadDoctors() {
     return data || [];
 }
 
-// Update
-export async function UpdateDoctor() {}
+// UNLINK
+export async function DeleteDoctor(doctorId: string) {
+    if (!doctorId) throw new Error("doctorId is required");
 
-// DELETE
-export async function DeleteDoctor() {}
+    const supabaseSSR = await createClientSSR();
+    const supabaseService = await createClientService();
+
+    const admin = await VerifyAdmin(supabaseSSR);
+    if (!admin) throw new Error("Not logged in or not an admin");
+
+    // Remove the relationship for THIS hospital only
+    const { error: delErr } = await supabaseService
+        .from("doctor_hospital")
+        .delete()
+        .eq("doctor_id", doctorId)
+        .eq("hospital_id", admin.hospital_id);
+
+    if (delErr) throw new Error(`Unlink failed: ${delErr.message}`);
+
+    return { success: true };
+}
