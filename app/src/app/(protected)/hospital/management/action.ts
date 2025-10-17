@@ -21,13 +21,20 @@ async function CheckEmail(email: string) {
     const supabaseService = await createClientService();
     const { data, error } = await supabaseService.auth.admin.listUsers();
     if (error) throw error;
-    return data.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase()) ?? null;
+    return (
+        data.users.find(
+            (u: any) => u.email?.toLowerCase() === email.toLowerCase(),
+        ) ?? null
+    );
 }
 
 async function InsertDoctor(supabaseService: any, userId: string) {
     const { data, error } = await supabaseService
         .from("doctor")
-        .upsert({ doctor_id: userId }, { onConflict: "doctor_id", ignoreDuplicates: true })
+        .upsert(
+            { doctor_id: userId },
+            { onConflict: "doctor_id", ignoreDuplicates: true },
+        )
         .select()
         .maybeSingle(); // may be null if it was a no-op
 
@@ -35,7 +42,11 @@ async function InsertDoctor(supabaseService: any, userId: string) {
     return data ?? null;
 }
 
-async function LinkHospital(supabaseService: any, doctorId: string, hospitalId: string) {
+async function LinkHospital(
+    supabaseService: any,
+    doctorId: string,
+    hospitalId: string,
+) {
     const { data, error } = await supabaseService
         .from("doctor_hospital")
         .upsert(
@@ -45,7 +56,8 @@ async function LinkHospital(supabaseService: any, doctorId: string, hospitalId: 
         .select()
         .maybeSingle();
 
-    if (error) throw new Error(`doctor_hospital insert failed: ${error.message}`);
+    if (error)
+        throw new Error(`doctor_hospital insert failed: ${error.message}`);
     return data ?? null;
 }
 
@@ -68,8 +80,10 @@ export async function InviteDoctor(formData: FormData) {
         userId = existingUser.id;
     } else {
         // 2) Invite (Auth) via service client
-        const { data: invite, error: inviteErr } = await supabaseService.auth.admin.inviteUserByEmail(email);
-        if (inviteErr) throw new Error(`Auth invite failed: ${inviteErr.message}`);
+        const { data: invite, error: inviteErr } =
+            await supabaseService.auth.admin.inviteUserByEmail(email);
+        if (inviteErr)
+            throw new Error(`Auth invite failed: ${inviteErr.message}`);
         userId = invite.user.id;
     }
 
@@ -77,13 +91,29 @@ export async function InviteDoctor(formData: FormData) {
     const doctorRow = await InsertDoctor(supabaseService, userId);
 
     // 4) Link to hospital (SSR, RLS)
-    const linkRow = await LinkHospital(supabaseService, userId, admin.hospital_id);
+    const linkRow = await LinkHospital(
+        supabaseService,
+        userId,
+        admin.hospital_id,
+    );
 
     return { doctor: doctorRow, link: linkRow };
 }
 
 // READ
-export async function ReadDoctors() {}
+export async function ReadDoctors() {
+    const supabaseSSR = await createClientSSR();
+    const admin = await VerifyAdmin(supabaseSSR);
+    if (!admin) throw new Error("Not logged in or not an admin");
+
+    const { data, error } = await supabaseSSR
+        .from("read_doctors")
+        .select("*")
+        .eq("hospital_id", admin.hospital_id);
+
+    if (error) throw new Error(error.message);
+    return data || [];
+}
 
 // Update
 export async function UpdateDoctor() {}
