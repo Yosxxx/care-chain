@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import InviteDoctorModal from "@/components/invite-doctor-modal";
-import { ReadDoctors } from "./action"; // server action
-import { FaEdit } from "react-icons/fa";
+import { ReadDoctors } from "./action";
 import { MdDelete } from "react-icons/md";
 
 export default function Page() {
@@ -83,7 +82,7 @@ export default function Page() {
             </div>
 
             {/* TABLE */}
-            <table className="w-full border-collapse border border-gray-300">
+            <table className="w-full border-collapse border border-gray-300 rounded-sm">
                 <thead className="bg-gray-100">
                     <tr>
                         <th className="border p-2 text-start">Doctor ID</th>
