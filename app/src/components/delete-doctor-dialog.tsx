@@ -15,7 +15,7 @@ type Props = {
     onOpenChange: (v: boolean) => void;
     doctorName?: string;
     loading?: boolean;
-    onConfirm: () => Promise<void> | void; // <-- pass this in from the page
+    onConfirm: () => Promise<void> | void;
 };
 
 export default function DeleteDoctorDialog({
