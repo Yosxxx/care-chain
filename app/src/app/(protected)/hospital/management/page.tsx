@@ -53,7 +53,7 @@ export default function Page() {
     }, [searchTerm, doctors]);
 
     return (
-        <main className="p-6">
+        <main>
             {/* INVITE MODAL */}
             {modal && (
                 <div
@@ -122,10 +122,7 @@ export default function Page() {
                                     {doc.status || "—"}
                                 </td>
                                 <td className="border p-2">
-                                    <div className="flex items-center justify-around">
-                                        <FaEdit />
-                                        <MdDelete />
-                                    </div>
+                                    <MdDelete />
                                 </td>
                             </tr>
                         ))

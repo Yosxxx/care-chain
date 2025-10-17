@@ -1,4 +1,3 @@
-import SignOutButton from "@/components/sign-out-btn";
 import "./globals.css";
 
 export default function RootLayout({
@@ -9,7 +8,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body>
-                <div className="min-w-7xl max-w-7xl mx-auto">{children}</div>
+                <div className="">{children}</div>
             </body>
         </html>
     );
