@@ -14,9 +14,7 @@ export default async function middleware(request: NextRequest) {
                     return request.cookies.getAll();
                 },
                 setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value }) =>
-                        request.cookies.set(name, value),
-                    );
+                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
                     supabaseResponse = NextResponse.next({ request });
                     cookiesToSet.forEach(({ name, value, options }) =>
                         supabaseResponse.cookies.set(name, value, options),
@@ -28,7 +26,7 @@ export default async function middleware(request: NextRequest) {
 
     const {
         data: { user },
-    } = await supabase.auth.getUser(); // ← need await
+    } = await supabase.auth.getUser();
 
     // Not signed in: send to the right auth screen
     if (!user) {
@@ -42,33 +40,21 @@ export default async function middleware(request: NextRequest) {
     }
 
     // Look up roles via your domain tables
-    const { data: adminRow } = await supabase
-        .from("admin")
-        .select("id")
-        .eq("admin_id", user.id)
-        .maybeSingle();
+    const { data: adminRow } = await supabase.from("admin").select("id").eq("admin_id", user.id).maybeSingle();
 
-    const { data: doctorRow } = await supabase
-        .from("doctor") // ← was "admin" before
-        .select("id")
-        .eq("doctor_id", user.id)
-        .maybeSingle();
+    const { data: doctorRow } = await supabase.from("doctor").select("id").eq("doctor_id", user.id).maybeSingle();
 
     // Guard admin-only (hospital) routes
     if (url.pathname.startsWith("/hospital")) {
         if (!adminRow) {
-            return NextResponse.redirect(
-                new URL("/hospital/dashboard", request.url),
-            );
+            return NextResponse.redirect(new URL("/hospital/dashboard", request.url));
         }
     }
 
     // Guard doctor-only (doctor) routes
     if (url.pathname.startsWith("/doctor")) {
         if (!doctorRow) {
-            return NextResponse.redirect(
-                new URL("/doctor/dashboard", request.url),
-            );
+            return NextResponse.redirect(new URL("/doctor/dashboard", request.url));
         }
     }
 

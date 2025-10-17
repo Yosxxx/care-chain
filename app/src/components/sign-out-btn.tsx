@@ -14,18 +14,14 @@ export default function SignOutButton() {
         const { data } = await supabase.auth.getUser();
         const user = data.user;
 
-        // Detect role from your tables
+        // Detect role using table name
         const { data: doctor } = await supabase
             .from("doctor")
             .select("doctor_id")
             .eq("doctor_id", user?.id)
             .maybeSingle();
 
-        const { data: admin } = await supabase
-            .from("admin")
-            .select("admin_id")
-            .eq("admin_id", user?.id)
-            .maybeSingle();
+        const { data: admin } = await supabase.from("admin").select("admin_id").eq("admin_id", user?.id).maybeSingle();
 
         const { error } = await supabase.auth.signOut();
         if (error) {
@@ -33,8 +29,8 @@ export default function SignOutButton() {
             return;
         }
 
-        if (doctor) router.push("/doctor-auth");
-        else if (admin) router.push("/admin-auth");
+        if (doctor) router.push("/auth/doctor");
+        else if (admin) router.push("/auth/admin");
         else router.push("/");
     }
 
