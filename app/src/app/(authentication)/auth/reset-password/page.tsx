@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ export default function ResetPasswordPage() {
     const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(true);
 
+    // ✅ Handle tokens from reset email link
     useEffect(() => {
         const handleSession = async () => {
             const hash = window.location.hash;
@@ -25,14 +26,18 @@ export default function ResetPasswordPage() {
                     access_token,
                     refresh_token,
                 });
-                if (error) setMessage(`Session error: ${error.message}`);
+                if (error) {
+                    console.error("Session error:", error);
+                    setMessage("Auth session error");
+                }
             } else {
-                setMessage("Invalid or missing session token.");
+                setMessage("Auth session missing!");
             }
             setLoading(false);
         };
+
         handleSession();
-    }, [supabase]);
+    }, []);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -45,7 +50,7 @@ export default function ResetPasswordPage() {
         if (error) setMessage(error.message);
         else {
             setMessage("Password updated! Redirecting...");
-            setTimeout(() => router.push("/doctor-login"), 2000);
+            setTimeout(() => router.push("/doctor/dashboard"), 2000);
         }
     }
 
@@ -79,7 +84,11 @@ export default function ResetPasswordPage() {
                     <Button type="submit" className="w-full">
                         Update Password
                     </Button>
-                    {message && <div className="text-sm mt-2">{message}</div>}
+                    {message && (
+                        <div className="text-sm mt-2 text-center">
+                            {message}
+                        </div>
+                    )}
                 </form>
             </div>
         </main>

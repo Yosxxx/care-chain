@@ -77,20 +77,32 @@ export async function InviteDoctor(formData: FormData) {
 
     let userId: string;
     if (existingUser) {
+        // user already exists
         userId = existingUser.id;
     } else {
-        // 2) Invite (Auth) via service client
-        const { data: invite, error: inviteErr } =
-            await supabaseService.auth.admin.inviteUserByEmail(email);
-        if (inviteErr)
-            throw new Error(`Auth invite failed: ${inviteErr.message}`);
-        userId = invite.user.id;
+        // 2 Create user manually without triggering Supabase’s invite email
+        const { data: createdUser, error: createErr } =
+            await supabaseService.auth.admin.createUser({
+                email,
+                email_confirm: true, // marks email as verified
+            });
+        if (createErr)
+            throw new Error(`User creation failed: ${createErr.message}`);
+        userId = createdUser.user.id;
+
+        // 3 Send password setup/reset email (tokenized link)
+        const { error: resetErr } =
+            await supabaseService.auth.resetPasswordForEmail(email, {
+                redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+            });
+        if (resetErr)
+            throw new Error(`Password setup email failed: ${resetErr.message}`);
     }
 
-    // 3) Insert/ensure doctor (SSR, RLS)
+    // 4 Insert/ensure doctor
     const doctorRow = await InsertDoctor(supabaseService, userId);
 
-    // 4) Link to hospital (SSR, RLS)
+    // 5 Link doctor to hospital
     const linkRow = await LinkHospital(
         supabaseService,
         userId,
