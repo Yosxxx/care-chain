@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import PatientRecord from "@/components/patient-record";
-import AppendRecord from "@/components/append-record";
 
 export default function Page() {
     return (
