@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { GetDoctorInfo } from "./action";
+import { useState, useEffect } from "react";
+import { GetDoctorInfo, UpdateEmailDoctor, UpdateNameDoctor } from "./action";
 import { Button } from "@/components/ui/button";
+import ChangeDialog from "@/components/change-dialog";
 
-export default function Page() {
+export default function DoctorProfilePage() {
     const [doctor, setDoctor] = useState<any>(null);
+    const [open, setOpen] = useState(false);
+    const [field, setField] = useState<"email" | "name">("email");
 
     useEffect(() => {
         (async () => {
@@ -13,6 +16,11 @@ export default function Page() {
             setDoctor(data);
         })();
     }, []);
+
+    const handleOpen = (f: "email" | "name") => {
+        setField(f);
+        setOpen(true);
+    };
 
     return (
         <main className="w-full">
@@ -28,21 +36,25 @@ export default function Page() {
 
                 <div>
                     <div>Email</div>
-                    <div className="flex w-full items-center gap-x-5">
+                    <div className="flex items-center gap-x-5">
                         <div className="p-2 border flex-1">
                             {doctor?.email ?? "---"}
                         </div>
-                        <Button>Change</Button>
+                        <Button onClick={() => handleOpen("email")}>
+                            Change
+                        </Button>
                     </div>
                 </div>
 
                 <div>
                     <div>Name</div>
-                    <div className="flex w-full items-center gap-x-5">
+                    <div className="flex items-center gap-x-5">
                         <div className="p-2 border flex-1">
                             {doctor?.name ?? "---"}
                         </div>
-                        <Button>Change</Button>
+                        <Button onClick={() => handleOpen("name")}>
+                            Change
+                        </Button>
                     </div>
                 </div>
 
@@ -50,6 +62,20 @@ export default function Page() {
                     <Button>Reset Password</Button>
                 </div>
             </div>
+
+            <ChangeDialog
+                role="doctor"
+                field={field}
+                open={open}
+                onOpenChange={setOpen}
+                onConfirm={async (val) => {
+                    if (field === "email") await UpdateEmailDoctor(val);
+                    else await UpdateNameDoctor(val);
+
+                    const updated = await GetDoctorInfo();
+                    setDoctor(updated);
+                }}
+            />
         </main>
     );
 }
