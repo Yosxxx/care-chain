@@ -8,7 +8,7 @@ pub mod states;
 use instructions::*;
 use states::*;
 
-declare_id!("6bPVQ5vhpHNUgCWR7Fgc6F5Uf4JgNS2GUsq6nsUTcWuv");
+declare_id!("CNnNnMmhqyTgK3xJ8WWEYSErdGnw5nGZ9mDCyHjyVnzh");
 
 #[program]
 pub mod anchor {
