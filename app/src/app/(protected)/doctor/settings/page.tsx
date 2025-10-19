@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { GetDoctorInfo, UpdateEmailDoctor, UpdateNameDoctor } from "./action";
+import {
+    GetDoctorInfo,
+    UpdateEmailDoctor,
+    UpdateNameDoctor,
+} from "./action/doctor";
 import { Button } from "@/components/ui/button";
 import ChangeDialog from "@/components/change-dialog";
+import DoctorHospital from "@/components/doctor-hospital";
 
 export default function DoctorProfilePage() {
     const [doctor, setDoctor] = useState<any>(null);
@@ -24,6 +29,20 @@ export default function DoctorProfilePage() {
 
     return (
         <main className="w-full">
+            <ChangeDialog
+                role="doctor"
+                field={field}
+                open={open}
+                onOpenChange={setOpen}
+                onConfirm={async (val) => {
+                    if (field === "email") await UpdateEmailDoctor(val);
+                    else await UpdateNameDoctor(val);
+
+                    const updated = await GetDoctorInfo();
+                    setDoctor(updated);
+                }}
+            />
+
             <div className="p-5 border flex flex-col gap-y-5">
                 <div className="text-2xl font-bold">Doctor Information</div>
 
@@ -63,19 +82,7 @@ export default function DoctorProfilePage() {
                 </div>
             </div>
 
-            <ChangeDialog
-                role="doctor"
-                field={field}
-                open={open}
-                onOpenChange={setOpen}
-                onConfirm={async (val) => {
-                    if (field === "email") await UpdateEmailDoctor(val);
-                    else await UpdateNameDoctor(val);
-
-                    const updated = await GetDoctorInfo();
-                    setDoctor(updated);
-                }}
-            />
+            <DoctorHospital />
         </main>
     );
 }

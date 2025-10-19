@@ -47,18 +47,74 @@ async function LinkHospital(
     doctorId: string,
     hospitalId: string,
 ) {
-    const { data, error } = await supabaseService
+    // 1️ Check if existing link already exists
+    const { data: existing, error: fetchErr } = await supabaseService
         .from("doctor_hospital")
-        .upsert(
-            { doctor_id: doctorId, hospital_id: hospitalId, status: "PENDING" },
-            { onConflict: "doctor_id,hospital_id", ignoreDuplicates: true },
-        )
-        .select()
+        .select("id, status")
+        .eq("doctor_id", doctorId)
+        .eq("hospital_id", hospitalId)
         .maybeSingle();
 
-    if (error)
-        throw new Error(`doctor_hospital insert failed: ${error.message}`);
-    return data ?? null;
+    if (fetchErr) throw new Error(`Fetch failed: ${fetchErr.message}`);
+
+    let linkRow;
+
+    if (existing) {
+        // 2️. If doctor previously RESIGNED or REVOKED, reset to PENDING
+        if (["RESIGNED", "REVOKED"].includes(existing.status)) {
+            const { data, error } = await supabaseService
+                .from("doctor_hospital")
+                .update({ status: "PENDING" })
+                .eq("doctor_id", doctorId)
+                .eq("hospital_id", hospitalId)
+                .select()
+                .maybeSingle();
+
+            if (error)
+                throw new Error(
+                    `doctor_hospital update failed: ${error.message}`,
+                );
+
+            linkRow = data;
+        } else {
+            // Already exists and not resigned/revoked — do nothing
+            linkRow = existing;
+        }
+    } else {
+        // 3️ Fresh invite if no record exists (use UPSERT here)
+        const { data, error } = await supabaseService
+            .from("doctor_hospital")
+            .upsert(
+                {
+                    doctor_id: doctorId,
+                    hospital_id: hospitalId,
+                    status: "PENDING",
+                },
+                { onConflict: "doctor_id,hospital_id" },
+            )
+            .select()
+            .maybeSingle();
+
+        if (error)
+            throw new Error(`doctor_hospital insert failed: ${error.message}`);
+
+        linkRow = data;
+    }
+
+    // 4️ Always log the invite in doctor_hospital_log
+    const { error: logErr } = await supabaseService
+        .from("doctor_hospital_log")
+        .insert({
+            doctor_id: doctorId,
+            hospital_id: hospitalId,
+            actor: "HOSPITAL",
+            action: "INVITED",
+        });
+
+    if (logErr)
+        throw new Error(`doctor_hospital_log insert failed: ${logErr.message}`);
+
+    return linkRow;
 }
 
 // LINK
