@@ -146,11 +146,16 @@ pub struct CreateRecord<'info> {
     pub hospital: Account<'info, Hospital>,
 
     #[account(
-        seeds = [SEED_GRANT, patient.key().as_ref(), hospital.key().as_ref(), &[SCOPE_WRITE]],
+        seeds = [
+            SEED_GRANT,
+            patient.key().as_ref(),
+            hospital.authority.as_ref(),    
+            &[SCOPE_WRITE]
+        ],
         bump = grant_write.bump,
-        constraint = grant_write.patient == patient.key() @ RecordError::GrantMismatch,
-        constraint = grant_write.grantee == hospital.key() @ RecordError::GrantMismatch,
-        constraint = !grant_write.revoked @ RecordError::GrantRevoked,
+        constraint = grant_write.patient == patient.key()                @ RecordError::GrantMismatch,
+        constraint = grant_write.grantee == hospital.authority           @ RecordError::GrantMismatch, // <-- compare to authority
+        constraint = !grant_write.revoked                                @ RecordError::GrantRevoked,
     )]
     pub grant_write: Account<'info, Grant>,
 
