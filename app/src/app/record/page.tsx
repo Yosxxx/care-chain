@@ -80,13 +80,13 @@ export default function Page() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center my-10">
+    <main className="flex min-h-screen items-center justify-center">
       <div className="min-w-lg max-w-lg flex flex-col gap-y-5 relative">
         <h1 className="text-2xl font-bold">Append Medical Record</h1>
 
         {/* Patient Pubkey */}
         <div>
-          <Label>Patient Pubkey</Label>
+          <Label className="mb-2">Patient Pubkey</Label>
           <div className="flex gap-x-3 mt-1">
             <Input
               value={form.patient_pubkey}
@@ -100,7 +100,7 @@ export default function Page() {
 
         {/* Doctor Info */}
         <div>
-          <Label>Doctor ID</Label>
+          <Label className="mb-2">Doctor ID</Label>
           <Input
             value={form.doctor_id}
             onChange={(e) => handleInput("doctor_id", e.target.value)}
@@ -108,7 +108,7 @@ export default function Page() {
         </div>
 
         <div>
-          <Label>Doctor Name</Label>
+          <Label className="mb-2">Doctor Name</Label>
           <Input
             value={form.doctor_name}
             onChange={(e) => handleInput("doctor_name", e.target.value)}
@@ -117,7 +117,7 @@ export default function Page() {
 
         {/* Medical Info */}
         <div>
-          <Label>Diagnosis</Label>
+          <Label className="mb-2">Diagnosis</Label>
           <Input
             value={form.diagnosis}
             onChange={(e) => handleInput("diagnosis", e.target.value)}
@@ -125,7 +125,7 @@ export default function Page() {
         </div>
 
         <div>
-          <Label>Keywords</Label>
+          <Label className="mb-2">Keywords</Label>
           <Input
             value={form.keywords}
             onChange={(e) => handleInput("keywords", e.target.value)}
@@ -133,7 +133,7 @@ export default function Page() {
         </div>
 
         <div>
-          <Label>Description</Label>
+          <Label className="mb-2">Description</Label>
           <Textarea
             value={form.description}
             onChange={(e) => handleInput("description", e.target.value)}

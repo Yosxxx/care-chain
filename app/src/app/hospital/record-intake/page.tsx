@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import JSZip from "jszip";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Undo2 } from "lucide-react";
+import { GetHospitalData } from "@/action/GetHospitalData";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -19,37 +20,76 @@ interface MedicalRecord {
   description: string;
 }
 
+interface HospitalData {
+  hospital_id: string;
+  name: string;
+  authority_pubkey: string;
+}
+
 export default function Page() {
   const [record, setRecord] = useState<MedicalRecord | null>(null);
   const [original, setOriginal] = useState<MedicalRecord | null>(null);
   const [zipName, setZipName] = useState<string | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
   const [images, setImages] = useState<{ name: string; blob: Blob }[]>([]);
+  const [hospitalData, setHospitalData] = useState<HospitalData | null>(null);
+
+  // ==================== FETCH HOSPITAL INFO ====================
+  useEffect(() => {
+    const fetchHospital = async () => {
+      try {
+        const data = await GetHospitalData();
+        setHospitalData(data);
+      } catch (err: unknown) {
+        if (err instanceof Error)
+          console.error("Failed to fetch hospital data:", err.message);
+      }
+    };
+    fetchHospital();
+  }, []);
 
   // ==================== LOAD ZIP ====================
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       const zip = await JSZip.loadAsync(file);
       const jsonFile = zip.file("medical_record.json");
-      if (!jsonFile) return alert("medical_record.json not found");
+      if (!jsonFile) {
+        alert("medical_record.json not found");
+        return;
+      }
 
-      const data = JSON.parse(await jsonFile.async("string"));
+      const jsonText = await jsonFile.async("string");
+      const data: MedicalRecord = JSON.parse(jsonText);
       setRecord(data);
       setOriginal(data);
       setZipName(file.name);
 
+      // Extract images
       const imgs = await Promise.all(
         Object.values(zip.files)
-          .filter((f) => f.name.match(/\.(jpg|jpeg|png|webp|bmp)$/i) && !f.dir)
+          .filter((f) => /\.(jpe?g|png|webp|bmp)$/i.test(f.name) && !f.dir)
           .map(async (f) => ({ name: f.name, blob: await f.async("blob") }))
       );
-
       setImages(imgs);
       setPreviews(imgs.map((i) => URL.createObjectURL(i.blob)));
-    } catch (err) {
+
+      // Auto-fill hospital info if available
+      if (hospitalData) {
+        setRecord((prev) =>
+          prev
+            ? {
+                ...prev,
+                hospital_id: hospitalData.hospital_id,
+                hospital_pubkey: hospitalData.authority_pubkey,
+                hospital_name: hospitalData.name,
+              }
+            : prev
+        );
+      }
+    } catch (err: unknown) {
       console.error("Error reading zip:", err);
       alert("Failed to parse zip");
     }
@@ -62,36 +102,45 @@ export default function Page() {
   const handleReset = (key: keyof MedicalRecord) =>
     record && original && setRecord({ ...record, [key]: original[key] });
 
-  const handleFill = (key: keyof MedicalRecord) => {
-    if (!record) return;
-    const data: Partial<MedicalRecord> = {
-      hospital_id: "HOSP123456",
-      hospital_pubkey: "SOLANA_PUBKEY_ABC123XYZ",
-      hospital_name: "St. Care Medical Center",
-    };
-    setRecord({ ...record, [key]: data[key] ?? record[key] });
+  const handleFill = () => {
+    if (!record || !hospitalData) return;
+    setRecord({
+      ...record,
+      hospital_id: hospitalData.hospital_id,
+      hospital_pubkey: hospitalData.authority_pubkey,
+      hospital_name: hospitalData.name,
+    });
   };
 
   const handleDownloadZip = async () => {
     if (!record) return;
-    const zip = new JSZip();
 
+    const zip = new JSZip();
     zip.file("medical_record.json", JSON.stringify(record, null, 2));
     images.forEach((img) => zip.file(img.name, img.blob));
 
     const blob = await zip.generateAsync({ type: "blob" });
-    const filename = `medical_record_${
-      new Date()
-        .toISOString()
-        .replace(/[-:]/g, "")
-        .replace("T", "_")
-        .split(".")[0]
-    }.zip`;
 
-    const link = Object.assign(document.createElement("a"), {
-      href: URL.createObjectURL(blob),
-      download: filename,
-    });
+    // --- Filename structure: patient_pubkey + hospital_pubkey + date ---
+    const patientKey =
+      record.patient_pubkey?.replace(/[^a-zA-Z0-9_-]/g, "") ||
+      "unknown_patient";
+    const hospitalKey =
+      record.hospital_pubkey?.replace(/[^a-zA-Z0-9_-]/g, "") ||
+      "unknown_hospital";
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace("T", "_")
+      .split(".")[0];
+
+    const filename = `${patientKey}_${hospitalKey}_${timestamp}.zip`;
+
+    // --- Download trigger ---
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -120,12 +169,12 @@ export default function Page() {
       <Input type="file" accept=".zip" onChange={handleFileUpload} />
 
       {record && zipName && (
-        <div className="flex flex-col gap-y-3 border p-3 mt-5">
-          <div className="text-2xl font-bold">{zipName}</div>
+        <section className="flex flex-col gap-y-3 border p-3 mt-5">
+          <h1 className="text-2xl font-bold">{zipName}</h1>
 
           {fields.map(({ key, label, textarea, fillable }) => (
             <div key={key}>
-              <div>{label}</div>
+              <label className="font-medium">{label}</label>
               <div className="flex gap-x-3">
                 {textarea ? (
                   <textarea
@@ -142,14 +191,11 @@ export default function Page() {
                 <Button variant="secondary" onClick={() => handleReset(key)}>
                   <Undo2 />
                 </Button>
-                {fillable && (
-                  <Button onClick={() => handleFill(key)}>Fill</Button>
-                )}
+                {fillable && <Button onClick={handleFill}>Fill</Button>}
               </div>
             </div>
           ))}
 
-          {/* Image previews */}
           {previews.length > 0 && (
             <div className="mt-3 grid grid-cols-3 gap-2">
               {previews.map((src, i) => (
@@ -168,7 +214,6 @@ export default function Page() {
             </div>
           )}
 
-          {/* Action buttons */}
           <div className="flex gap-x-5 mt-4">
             <Button className="flex-1" onClick={handleDownloadZip}>
               Download Updated ZIP
@@ -177,7 +222,7 @@ export default function Page() {
               Reject
             </Button>
           </div>
-        </div>
+        </section>
       )}
     </main>
   );

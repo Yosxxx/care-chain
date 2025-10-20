@@ -9,14 +9,14 @@ export async function VerifyAdmin(userId: string) {
     .from("admin")
     .select("*")
     .eq("admin_id", userId)
-    .single();
+    .maybeSingle();
 
   if (adminErr) {
     throw adminErr;
   }
 
   if (!adminRow) {
-    throw new Error("You dont belong to any hospital");
+    if (!adminRow) throw new Error("User is not a verified admin");
   }
 
   return adminRow;
