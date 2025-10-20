@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Settings, Globe, Mail, LineChart, LogOut, Bug } from "lucide-react";
+import { AdminLogout } from "@/action/AdminLogout";
 
 interface SidebarItem {
   label: string;
@@ -16,7 +17,6 @@ export default function AppSidebar({
   dynamicItems,
   isAdmin = false,
 }: AppSidebarProps) {
-  // Prefix for admin routes
   const prefix = isAdmin ? "/hospital" : "";
 
   return (
@@ -63,12 +63,18 @@ export default function AppSidebar({
             >
               <Globe className="w-5 h-5" /> Website
             </Link>
-            <Link
-              className="flex items-center gap-x-2"
-              href={`${prefix}/logout`}
-            >
-              <LogOut className="w-5 h-5" /> Logout
-            </Link>
+
+            {/* ✅ Logout form only visible for admins */}
+            {isAdmin && (
+              <form action={AdminLogout}>
+                <button
+                  type="submit"
+                  className="flex items-center gap-x-2 w-full text-left"
+                >
+                  <LogOut className="w-5 h-5" /> Logout
+                </button>
+              </form>
+            )}
           </div>
 
           <div>
