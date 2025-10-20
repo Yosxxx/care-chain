@@ -1,3 +1,6 @@
+/* INTER FONT */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -42,6 +45,9 @@
 
   /* nb-architekt font*/
   --font-architekt: "NB Architekt", sans-serif;
+
+  /* inter font */
+  --font-inter: "Inter", sans-serif;
 }
 
 :root {
