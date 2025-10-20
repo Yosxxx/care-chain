@@ -1,4 +1,4 @@
-import { IoMdNotificationsOutline } from "react-icons/io";
+import { Bell } from "lucide-react";
 
 export default function NavBar() {
   return (
@@ -6,7 +6,7 @@ export default function NavBar() {
       <main className="min-w-[1400px] max-w-[1400px] flex items-center justify-between mx-auto py-5 ">
         <div className="font-bold text-2xl">LOGO</div>
         <div className="">
-          <IoMdNotificationsOutline size={28} />
+          <Bell className="w-5 h-5" />
         </div>
       </main>
     </nav>
