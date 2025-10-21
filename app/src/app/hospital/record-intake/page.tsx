@@ -169,7 +169,7 @@ export default function Page() {
       <Input type="file" accept=".zip" onChange={handleFileUpload} />
 
       {record && zipName && (
-        <section className="flex flex-col gap-y-3 border p-3 mt-5">
+        <section className="flex flex-col gap-y-3 border p-3 mt-5 rounded">
           <h1 className="text-2xl font-bold">{zipName}</h1>
 
           {fields.map(({ key, label, textarea, fillable }) => (
