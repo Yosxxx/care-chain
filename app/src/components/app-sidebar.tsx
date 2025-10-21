@@ -25,18 +25,30 @@ export default function AppSidebar({
 
   // --- Fixed upper section links ---
   const fixedMain: SidebarItem[] = [
+    ...(isAdmin
+      ? [
+          {
+            label: "Settings",
+            href: "/settings",
+            icon: <Settings className="w-5 h-5" />,
+          },
+        ]
+      : []),
     {
-      label: "Settings",
-      href: "/settings",
-      icon: <Settings className="w-5 h-5" />,
+      label: "Support",
+      href: "/support",
+      icon: <Mail className="w-5 h-5" />,
     },
-    { label: "Support", href: "/support", icon: <Mail className="w-5 h-5" /> },
     {
       label: "Analytics",
       href: "/analytics",
       icon: <LineChart className="w-5 h-5" />,
     },
-    { label: "Website", href: "/website", icon: <Globe className="w-5 h-5" /> },
+    {
+      label: "Website",
+      href: "/website",
+      icon: <Globe className="w-5 h-5" />,
+    },
   ];
 
   // --- Bottom section links ---
@@ -48,11 +60,10 @@ export default function AppSidebar({
     },
   ];
 
-  // --- Function to check active state ---
   const isActive = (href: string) => pathname === `${prefix}${href}`;
 
   return (
-    <aside className="sticky top-[6rem] flex h-[calc(100vh-6rem)] flex-col justify-between py-5 ">
+    <aside className="sticky top-[6rem] flex h-[calc(100vh-6rem)] flex-col justify-between py-5">
       {/* ==================== Dynamic Section ==================== */}
       <div className="flex flex-col gap-y-2">
         {dynamicItems.map((item, index) => {
@@ -63,7 +74,7 @@ export default function AppSidebar({
               href={`${prefix}${item.href}`}
               className={`flex items-center gap-x-2 transition duration-200 ${
                 active
-                  ? "text-primary font-medium "
+                  ? "text-primary font-medium"
                   : "hover:text-foreground dark:hover:text-white"
               }`}
             >
@@ -87,7 +98,7 @@ export default function AppSidebar({
                   href={`${prefix}${item.href}`}
                   className={`flex items-center gap-x-2 transition duration-200 ${
                     active
-                      ? "text-primary font-medium "
+                      ? "text-primary font-medium"
                       : "hover:text-foreground dark:hover:text-white"
                   }`}
                 >
@@ -97,7 +108,7 @@ export default function AppSidebar({
               );
             })}
 
-            {/* Logout for admin only */}
+            {/* Logout (admin only) */}
             {isAdmin && (
               <form action={AdminLogout}>
                 <button
@@ -120,7 +131,7 @@ export default function AppSidebar({
                   href={`${prefix}${item.href}`}
                   className={`flex items-center gap-x-2 transition duration-200 ${
                     active
-                      ? "text-primary font-medium "
+                      ? "text-primary font-medium"
                       : "hover:text-foreground dark:hover:text-white"
                   }`}
                 >

@@ -1,3 +1,4 @@
+import { SolanaProvider } from "@/components/solana-provider";
 import "./globals.css";
 import { Inter } from "next/font/google";
 
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <SolanaProvider>{children}</SolanaProvider>
+      </body>
     </html>
   );
 }

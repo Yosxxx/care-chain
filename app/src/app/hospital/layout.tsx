@@ -1,7 +1,6 @@
 import Navbar from "@/components/navbar";
 import AppSidebar from "@/components/app-sidebar";
 import { Building2, FileText, Users, ClipboardList } from "lucide-react";
-import { SolanaProvider } from "@/components/solana-provider";
 
 const SIDEBAR_ITEMS = [
   {
@@ -26,18 +25,16 @@ export default function RootLayout({
   const isAdmin = true;
 
   return (
-    <SolanaProvider>
-      <main>
-        <Navbar />
-        <div className="grid grid-cols-12 min-w-[1400px] max-w-[1400px] mx-auto gap-x-10 pt-5">
-          <div className="col-span-3">
-            <AppSidebar dynamicItems={SIDEBAR_ITEMS} isAdmin={isAdmin} />
-          </div>
-
-          <div className="col-span-6">{children}</div>
-          <div className="col-span-3"></div>
+    <main>
+      <Navbar />
+      <div className="grid grid-cols-12 min-w-[1400px] max-w-[1400px] mx-auto gap-x-10 pt-5">
+        <div className="col-span-3">
+          <AppSidebar dynamicItems={SIDEBAR_ITEMS} isAdmin={isAdmin} />
         </div>
-      </main>
-    </SolanaProvider>
+
+        <div className="col-span-6">{children}</div>
+        <div className="col-span-3"></div>
+      </div>
+    </main>
   );
 }
