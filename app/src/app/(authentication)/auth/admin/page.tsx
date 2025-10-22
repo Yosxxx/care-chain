@@ -1,14 +1,33 @@
 /* eslint-disable react/jsx-no-comment-textnodes */
+"use client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { AdminLoginPassword } from "@/action/AdminLogin";
+import { useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Page() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    try {
+      setLoading(true);
+      await AdminLoginPassword(formData);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error(error);
+      }
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center font-architekt">
-      <form action={AdminLoginPassword} className="min-w-md max-w-md font-bold">
+      <form onSubmit={handleSubmit} className="min-w-md max-w-md font-bold">
         <div className="p-5 border">// ADMIN LOGIN ░░░░░░░░░░░░░░░░░░░░░░░</div>
         <div className="flex flex-col gap-y-5 p-5 border-b border-l border-r">
           <div>
@@ -37,8 +56,15 @@ export default function Page() {
             {/* <Button variant={"outline"} className="font-bold">
               Passwordless Login
             </Button> */}
-            <Button className="font-bold" type="submit">
-              Login
+            <Button className={`font-bold`} type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <Spinner />
+                  Logging in...
+                </>
+              ) : (
+                <>Login</>
+              )}
             </Button>
           </div>
           <div className="font-inter text-sm text-muted-foreground font-normal">
