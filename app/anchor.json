@@ -1,0 +1,1487 @@
+{
+  "address": "2HZmbrh7agvx2M2z7PjY8U97fpXGuVTouVeVJRvDTXnq",
+  "metadata": {
+    "name": "anchor",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "create_record",
+      "discriminator": [
+        116,
+        124,
+        63,
+        58,
+        126,
+        204,
+        178,
+        10
+      ],
+      "accounts": [
+        {
+          "name": "uploader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "patient",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "patient_seq",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  101,
+                  113
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hospital",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  111,
+                  115,
+                  112,
+                  105,
+                  116,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hospital.authority",
+                "account": "Hospital"
+              }
+            ]
+          }
+        },
+        {
+          "name": "grant_write"
+        },
+        {
+          "name": "record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              },
+              {
+                "kind": "arg",
+                "path": "seq"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seq",
+          "type": "u64"
+        },
+        {
+          "name": "cid_enc",
+          "type": "string"
+        },
+        {
+          "name": "meta_mime",
+          "type": "string"
+        },
+        {
+          "name": "meta_cid",
+          "type": "string"
+        },
+        {
+          "name": "size_bytes",
+          "type": "u64"
+        },
+        {
+          "name": "blake2b_256",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "edek_root",
+          "type": "bytes"
+        },
+        {
+          "name": "edek_for_patient",
+          "type": "bytes"
+        },
+        {
+          "name": "edek_for_hospital",
+          "type": "bytes"
+        },
+        {
+          "name": "edek_root_algo",
+          "type": {
+            "defined": {
+              "name": "WrapAlgo"
+            }
+          }
+        },
+        {
+          "name": "edek_patient_algo",
+          "type": {
+            "defined": {
+              "name": "WrapAlgo"
+            }
+          }
+        },
+        {
+          "name": "edek_hospital_algo",
+          "type": {
+            "defined": {
+              "name": "WrapAlgo"
+            }
+          }
+        },
+        {
+          "name": "kms_ref",
+          "type": "string"
+        },
+        {
+          "name": "note",
+          "type": "string"
+        },
+        {
+          "name": "enc_version",
+          "type": "u16"
+        },
+        {
+          "name": "enc_algo",
+          "type": {
+            "defined": {
+              "name": "EncAlgo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "grant_access",
+      "discriminator": [
+        66,
+        88,
+        87,
+        113,
+        39,
+        22,
+        27,
+        165
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "patient",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "grant",
+          "writable": true
+        },
+        {
+          "name": "grantee"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "scope",
+          "type": "u8"
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "init_config",
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "kms_namespace",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "register_hospitals",
+      "discriminator": [
+        198,
+        253,
+        96,
+        130,
+        214,
+        114,
+        82,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "registrar",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "hospital_authority"
+        },
+        {
+          "name": "hospital",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  111,
+                  115,
+                  112,
+                  105,
+                  116,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hospital_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "kms_ref",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "revoke_grant",
+      "discriminator": [
+        134,
+        180,
+        57,
+        39,
+        152,
+        7,
+        154,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "patient",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "grant",
+          "writable": true
+        },
+        {
+          "name": "grantee"
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_paused",
+      "discriminator": [
+        91,
+        60,
+        125,
+        192,
+        176,
+        225,
+        166,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "upsert_patient",
+      "discriminator": [
+        247,
+        166,
+        68,
+        59,
+        109,
+        186,
+        139,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "patient",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "patient_seq",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  101,
+                  113
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "did",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Grant",
+      "discriminator": [
+        161,
+        166,
+        11,
+        205,
+        204,
+        135,
+        205,
+        54
+      ]
+    },
+    {
+      "name": "Hospital",
+      "discriminator": [
+        150,
+        59,
+        177,
+        217,
+        93,
+        234,
+        181,
+        75
+      ]
+    },
+    {
+      "name": "Patient",
+      "discriminator": [
+        118,
+        127,
+        39,
+        235,
+        201,
+        189,
+        0,
+        109
+      ]
+    },
+    {
+      "name": "PatientSeq",
+      "discriminator": [
+        12,
+        231,
+        74,
+        127,
+        83,
+        96,
+        204,
+        196
+      ]
+    },
+    {
+      "name": "Record",
+      "discriminator": [
+        254,
+        233,
+        117,
+        252,
+        76,
+        166,
+        146,
+        139
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ConfigInitialized",
+      "discriminator": [
+        181,
+        49,
+        200,
+        156,
+        19,
+        167,
+        178,
+        91
+      ]
+    },
+    {
+      "name": "GrantCreated",
+      "discriminator": [
+        162,
+        254,
+        131,
+        56,
+        65,
+        214,
+        85,
+        6
+      ]
+    },
+    {
+      "name": "GrantRevoked",
+      "discriminator": [
+        192,
+        60,
+        253,
+        12,
+        110,
+        158,
+        200,
+        30
+      ]
+    },
+    {
+      "name": "GrantUpdated",
+      "discriminator": [
+        193,
+        162,
+        192,
+        51,
+        187,
+        66,
+        0,
+        85
+      ]
+    },
+    {
+      "name": "HospitalRegistered",
+      "discriminator": [
+        30,
+        237,
+        93,
+        45,
+        22,
+        53,
+        110,
+        63
+      ]
+    },
+    {
+      "name": "PatientUpserted",
+      "discriminator": [
+        248,
+        249,
+        31,
+        144,
+        11,
+        214,
+        217,
+        3
+      ]
+    },
+    {
+      "name": "ProgramPauseUpdated",
+      "discriminator": [
+        28,
+        52,
+        127,
+        93,
+        195,
+        80,
+        76,
+        224
+      ]
+    },
+    {
+      "name": "RecordCreated",
+      "discriminator": [
+        7,
+        2,
+        32,
+        66,
+        135,
+        168,
+        104,
+        225
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Paused",
+      "msg": "Program is paused"
+    },
+    {
+      "code": 6001,
+      "name": "UploaderNotHospitalAuthority",
+      "msg": "Uploader must be the hospital authority"
+    },
+    {
+      "code": 6002,
+      "name": "GrantRevoked",
+      "msg": "WRITE grant is revoked"
+    },
+    {
+      "code": 6003,
+      "name": "GrantExpired",
+      "msg": "WRITE grant is expired"
+    },
+    {
+      "code": 6004,
+      "name": "GrantMismatch",
+      "msg": "WRITE grant does not match patient/hospital"
+    },
+    {
+      "code": 6005,
+      "name": "BadSeq",
+      "msg": "Bad sequence number"
+    },
+    {
+      "code": 6006,
+      "name": "SeqOverflow",
+      "msg": "Sequence overflow"
+    },
+    {
+      "code": 6007,
+      "name": "EmptyCidEnc",
+      "msg": "cid_enc is empty"
+    },
+    {
+      "code": 6008,
+      "name": "EmptyMime",
+      "msg": "meta_mime is empty"
+    },
+    {
+      "code": 6009,
+      "name": "SizeZero",
+      "msg": "size_bytes must be > 0"
+    },
+    {
+      "code": 6010,
+      "name": "KmsRefRequired",
+      "msg": "kms_ref must be non-empty when edek_root_algo=Kms"
+    },
+    {
+      "code": 6011,
+      "name": "EdekPatientMissing",
+      "msg": "edek_for_patient is empty"
+    },
+    {
+      "code": 6012,
+      "name": "EdekHospitalMissing",
+      "msg": "edek_for_hospital is empty"
+    },
+    {
+      "code": 6013,
+      "name": "CidTooLong",
+      "msg": "cid_enc too long"
+    },
+    {
+      "code": 6014,
+      "name": "MimeTooLong",
+      "msg": "meta_mime too long"
+    },
+    {
+      "code": 6015,
+      "name": "MetaCidTooLong",
+      "msg": "meta_cid too long"
+    },
+    {
+      "code": 6016,
+      "name": "NoteTooLong",
+      "msg": "note too long"
+    },
+    {
+      "code": 6017,
+      "name": "KmsRefTooLong",
+      "msg": "kms_ref too long"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Program Config",
+        "PDA: [SEED_CONFIG]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "kms_namespace",
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConfigInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "kms_namespace",
+            "type": "string"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EncAlgo",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "XChaCha20"
+          },
+          {
+            "name": "AesGcm"
+          },
+          {
+            "name": "Other"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Grant",
+      "docs": [
+        "Grant (Per-Grantee)",
+        "PDA: [SEED_GRANT, patient, grantee, scope_byte]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "grantee",
+            "type": "pubkey"
+          },
+          {
+            "name": "scope",
+            "type": "u8"
+          },
+          {
+            "name": "expires_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "created_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "revoked",
+            "type": "bool"
+          },
+          {
+            "name": "revoked_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GrantCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "grant",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "grantee",
+            "type": "pubkey"
+          },
+          {
+            "name": "scope",
+            "type": "u8"
+          },
+          {
+            "name": "expires_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "created_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GrantRevoked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "grant",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "grantee",
+            "type": "pubkey"
+          },
+          {
+            "name": "scope",
+            "type": "u8"
+          },
+          {
+            "name": "revoked_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "revoked_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GrantUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "grantee",
+            "type": "pubkey"
+          },
+          {
+            "name": "revoked",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Hospital",
+      "docs": [
+        "Hospital",
+        "PDA: [SEED_HOSPITAL, hospital_authority]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "kms_ref",
+            "type": "string"
+          },
+          {
+            "name": "registered_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HospitalRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "hospital",
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "kms_ref",
+            "type": "string"
+          },
+          {
+            "name": "registered_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Patient",
+      "docs": [
+        "Patient",
+        "PDA: [SEED_PATIENT, patient_pubkey]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient_pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "id_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "did",
+            "type": "string"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PatientSeq",
+      "docs": [
+        "PDA: [SEED_PATIENT_SEQ, patient]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "value",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PatientUpserted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient_pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "created",
+            "type": "bool"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProgramPauseUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "set_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Record",
+      "docs": [
+        "Record",
+        "PDA: [SEED_RECORD, patient, seq_le_bytes]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital",
+            "type": "pubkey"
+          },
+          {
+            "name": "uploader",
+            "type": "pubkey"
+          },
+          {
+            "name": "cid_enc",
+            "type": "string"
+          },
+          {
+            "name": "meta_mime",
+            "type": "string"
+          },
+          {
+            "name": "meta_cid",
+            "type": "string"
+          },
+          {
+            "name": "size_bytes",
+            "type": "u64"
+          },
+          {
+            "name": "blake2b_256",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "edek_root",
+            "type": "bytes"
+          },
+          {
+            "name": "edek_for_patient",
+            "type": "bytes"
+          },
+          {
+            "name": "edek_for_hospital",
+            "type": "bytes"
+          },
+          {
+            "name": "edek_root_algo",
+            "type": {
+              "defined": {
+                "name": "WrapAlgo"
+              }
+            }
+          },
+          {
+            "name": "edek_patient_algo",
+            "type": {
+              "defined": {
+                "name": "WrapAlgo"
+              }
+            }
+          },
+          {
+            "name": "edek_hospital_algo",
+            "type": {
+              "defined": {
+                "name": "WrapAlgo"
+              }
+            }
+          },
+          {
+            "name": "kms_ref",
+            "type": "string"
+          },
+          {
+            "name": "note",
+            "type": "string"
+          },
+          {
+            "name": "seq",
+            "type": "u64"
+          },
+          {
+            "name": "enc_version",
+            "type": "u16"
+          },
+          {
+            "name": "enc_algo",
+            "type": {
+              "defined": {
+                "name": "EncAlgo"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecordCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "record",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital",
+            "type": "pubkey"
+          },
+          {
+            "name": "uploader",
+            "type": "pubkey"
+          },
+          {
+            "name": "seq",
+            "type": "u64"
+          },
+          {
+            "name": "enc_version",
+            "type": "u16"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WrapAlgo",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Kms"
+          },
+          {
+            "name": "SealedBox"
+          },
+          {
+            "name": "Other"
+          }
+        ]
+      }
+    }
+  ]
+}

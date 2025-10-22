@@ -5,14 +5,14 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.devnet]
-anchor = "CNnNnMmhqyTgK3xJ8WWEYSErdGnw5nGZ9mDCyHjyVnzh"
+[programs.localnet]
+anchor = "2HZmbrh7agvx2M2z7PjY8U97fpXGuVTouVeVJRvDTXnq"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/carechain.json"
 
 [scripts]
