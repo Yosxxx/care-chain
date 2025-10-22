@@ -1,7 +1,7 @@
 "use client";
 
 import AppSidebar from "@/components/app-sidebar";
-import { Building2, FileText, ShieldPlus } from "lucide-react";
+import { Building2, Clock, FileText, Users } from "lucide-react";
 import { useSolana } from "@/components/solana-provider";
 import { WalletConnectButton } from "@/components/wallet-connect-button";
 import Navbar from "@/components/navbar";
@@ -20,7 +20,12 @@ const SIDEBAR_ITEMS = [
   {
     label: "Trustees",
     href: "/user/trustees",
-    icon: <ShieldPlus className="w-5 h-5" />,
+    icon: <Users className="w-5 h-5" />,
+  },
+  {
+    label: "Logs",
+    href: "/user/logs",
+    icon: <Clock className="w-5 h-5" />,
   },
 ];
 
