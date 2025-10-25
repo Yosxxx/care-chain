@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { useConnection, useAnchorWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import dynamic from "next/dynamic";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import idl from "../../../anchor.json";
 import {
@@ -14,11 +14,19 @@ import {
   findGrantPda,
 } from "@/lib/pda";
 
+const WalletMultiButton = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
+
 export default function CreateRecordPage() {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
 
-  const [patientStr, setPatientStr] = useState("");
+  const [patientStr, setPatientStr] = useState(""); // base58 for PDAs/on-chain
+  const [patientPkB64, setPatientPkB64] = useState("");   // pasted ed25519 PK (b64)
+  const [hospitalPkB64, setHospitalPkB64] = useState(""); // pasted ed25519 PK (b64)
+  const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState({
     hospital_id: "",
     hospital_name: "",
@@ -34,18 +42,18 @@ export default function CreateRecordPage() {
     () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
     []
   );
+
   const provider = useMemo(
     () =>
       wallet
-        ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+        ? new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" })
         : null,
     [connection, wallet]
   );
+
   const program = useMemo(
     () => (provider ? new anchor.Program(idl as anchor.Idl, provider) : null),
-    [provider]
+    [provider, programId]
   );
 
   const patient = useMemo(() => {
@@ -59,52 +67,100 @@ export default function CreateRecordPage() {
   const handleChange = (key: string, val: string) =>
     setMeta((m) => ({ ...m, [key]: val }));
 
+  function hexToU8(hex: string): Uint8Array {
+    return new Uint8Array(Buffer.from(hex, "hex"));
+  }
+
+  function b64ToU8(b64: string): Uint8Array {
+    return new Uint8Array(Buffer.from(b64, "base64"));
+  }
+
+
+  async function encUpload(): Promise<{
+    cidEnc: string;
+    metaCid: string;
+    sizeBytes: number;
+    cipherHashHex: string;
+    edekRoot_b64: string;
+    edekPatient_b64: string;
+    edekHospital_b64: string;
+    kmsRef: string;
+  }> {
+    if (!file) throw new Error("Choose a file first");
+    if (!patientPkB64.trim()) throw new Error("Paste patientPk_b64");
+    if (!hospitalPkB64.trim()) throw new Error("Paste hospitalPk_b64");
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("contentType", file.type || "application/octet-stream");
+    // We now send PKs you pasted, not derived from wallet/base58.
+    fd.append("patientPk_b64", patientPkB64.trim());
+    fd.append("rsCreatorPk_b64", hospitalPkB64.trim());
+
+    const r = await fetch("/create-record/enc-upload", { method: "POST", body: fd });
+    const text = await r.text(); // more robust error surfacing
+    if (!r.ok) throw new Error(text);
+    return JSON.parse(text);
+  }
+
   const createRecord = async () => {
     try {
-      setStatus("Sending...");
+      setStatus("Encrypting & uploading...");
       if (!program || !wallet || !patient)
         throw new Error("Program, wallet or patient missing");
 
+      const {
+        cidEnc,
+        metaCid,
+        sizeBytes,
+        cipherHashHex,
+        edekRoot_b64,
+        edekPatient_b64,
+        edekHospital_b64,
+        kmsRef,
+      } = await encUpload();
+
+      setStatus("Deriving PDAs...");
       const hospitalAuth = wallet.publicKey;
       const configPda = findConfigPda(programId);
       const patientPda = findPatientPda(programId, patient);
       const patientSeqPda = findPatientSeqPda(programId, patientPda);
       const hospitalPda = findHospitalPda(programId, hospitalAuth);
-      const grantWritePda = findGrantPda(
-        programId,
-        patientPda,
-        hospitalAuth,
-        2
-      );
+      const grantWritePda = findGrantPda(programId, patientPda, hospitalAuth, 2);
 
-      const cidEnc = "cid_enc_demo";
-      const metaMime = "application/json";
-      const metaCid = "meta_cid_demo";
-      const sizeBytes = new anchor.BN(1234);
-      const hash = new Uint8Array(32); // blank hash for now
-      const bytes = Buffer.from("demo");
-      // Fetch current patient sequence
       // @ts-ignore
-      const patientSeq = await (program.account as any).patientSeq.fetch(
-        patientSeqPda
-      );
-      const seq = new anchor.BN(patientSeq.value); // try value instead of +1
+      const patientSeq = await (program.account as any).patientSeq.fetch(patientSeqPda);
+      const seq = new anchor.BN(patientSeq.value);
 
+      const metaMime = "application/json";
+      const sizeBn = new anchor.BN(sizeBytes);
+      const hash32 = Array.from(hexToU8(cipherHashHex));
+      const edekRoot = Buffer.from(b64ToU8(edekRoot_b64));
+      const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
+      const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
+      console.log({
+        hash32: hash32.constructor.name,
+        edekRoot: edekRoot.constructor.name,
+        edekForPatient: edekForPatient.constructor.name,
+        edekForHospital: edekForHospital.constructor.name,
+      });
+
+      setStatus("Submitting transaction...");
       const tx = await program.methods
         .createRecord(
           seq,
           cidEnc,
           metaMime,
           metaCid,
-          sizeBytes,
-          Array.from(hash),
-          bytes,
-          bytes,
-          bytes,
+          sizeBn,
+          hash32,
+          edekRoot,
+          edekForPatient,
+          edekForHospital,
           { kms: {} },
           { kms: {} },
           { kms: {} },
-          meta.hospital_name,
+          kmsRef,
           meta.description,
           1,
           { xChaCha20: {} }
@@ -141,11 +197,32 @@ export default function CreateRecordPage() {
         <WalletMultiButton />
       </header>
 
+      {/* On-chain patient identity (for PDA derivations) */}
       <input
         className="w-full border rounded p-2 font-mono text-sm"
-        placeholder="Patient Pubkey"
+        placeholder="Patient Pubkey (base58, Solana address)"
         value={patientStr}
         onChange={(e) => setPatientStr(e.target.value)}
+      />
+
+      {/* Crypto recipients (used for sealed-box). Paste Ed25519 PKs (base64, 32 bytes). */}
+      <input
+        className="w-full border rounded p-2 font-mono text-sm"
+        placeholder="patientPk_b64 (Ed25519 public key, base64)"
+        value={patientPkB64}
+        onChange={(e) => setPatientPkB64(e.target.value)}
+      />
+      <input
+        className="w-full border rounded p-2 font-mono text-sm"
+        placeholder="hospitalPk_b64 (Ed25519 public key, base64)"
+        value={hospitalPkB64}
+        onChange={(e) => setHospitalPkB64(e.target.value)}
+      />
+
+      <input
+        type="file"
+        className="w-full border rounded p-2"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
       />
 
       {Object.entries(meta).map(([k, v]) => (
@@ -159,14 +236,14 @@ export default function CreateRecordPage() {
       ))}
 
       <button
-        disabled={!program || !patient}
+        disabled={!program || !patient || !file}
         onClick={createRecord}
         className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
       >
         Submit Record
       </button>
 
-      {status && <p className="text-sm mt-2">{status}</p>}
+      {status && <p className="text-sm mt-2 whitespace-pre-wrap">{status}</p>}
     </main>
   );
 }

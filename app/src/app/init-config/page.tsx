@@ -2,12 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-
-// IDL: adjust path if yours differs
 import idl from "../../../anchor.json";
+import dynamic from "next/dynamic";
+
+const WalletMultiButton = dynamic(
+    async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+    { ssr: false }
+);
+
 
 const SEED_CONFIG = Buffer.from("config");
 

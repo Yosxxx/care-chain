@@ -3,13 +3,18 @@
 import { useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import idl from "../../../anchor.json"; // adjust path if needed
 import { findGrantPda } from "@/lib/pda";
 import { SCOPE_OPTIONS } from "@/lib/constants";
 import { useGrants } from "@/hooks/useGrants";
 import { findPatientPda, findConfigPda } from "@/lib/pda";
+import dynamic from "next/dynamic";
+
+const WalletMultiButton = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
 
 export default function AccessManagerPage() {
   const { connection } = useConnection();
@@ -29,8 +34,8 @@ export default function AccessManagerPage() {
     () =>
       wallet
         ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+          commitment: "confirmed",
+        })
         : null,
     [connection, wallet]
   );
@@ -225,10 +230,10 @@ export default function AccessManagerPage() {
                 {g.scope === 1
                   ? "Read"
                   : g.scope === 2
-                  ? "Write"
-                  : g.scope === 4
-                  ? "Admin"
-                  : g.scope}
+                    ? "Write"
+                    : g.scope === 4
+                      ? "Admin"
+                      : g.scope}
               </p>
               <p>
                 <b>Grant PDA:</b> <span className="font-mono">{g.pubkey}</span>
@@ -256,11 +261,10 @@ export default function AccessManagerPage() {
               <p>
                 <b>Status:</b>{" "}
                 {g.revoked
-                  ? `Revoked${
-                      g.revokedAt
-                        ? ` @ ${new Date(g.revokedAt * 1000).toLocaleString()}`
-                        : ""
-                    }`
+                  ? `Revoked${g.revokedAt
+                    ? ` @ ${new Date(g.revokedAt * 1000).toLocaleString()}`
+                    : ""
+                  }`
                   : "Active"}
               </p>
             </div>

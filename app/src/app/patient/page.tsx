@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import idl from "../../../anchor.json";
@@ -11,6 +10,12 @@ import { MAX_DID_LEN } from "@/lib/constants";
 import { hexToBytes, bytesToHex } from "@/lib/bytes";
 import { blake2b256 } from "@/lib/hash";
 import { usePatients } from "@/hooks/usePatients";
+import dynamic from "next/dynamic";
+
+const WalletMultiButton = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
 
 export default function PatientsPage() {
   const { connection } = useConnection();
@@ -31,8 +36,8 @@ export default function PatientsPage() {
     () =>
       wallet
         ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+          commitment: "confirmed",
+        })
         : null,
     [connection, wallet]
   );
@@ -119,7 +124,7 @@ export default function PatientsPage() {
           setErr(`${e.message}\n${logs.join("\n")}`);
           return;
         }
-      } catch {}
+      } catch { }
       setErr(e?.message ?? String(e));
     }
   };

@@ -1,7 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { useProgram } from "@/hooks/useProgram";
 import { findConfigPda, findHospitalPda } from "@/lib/pda";
