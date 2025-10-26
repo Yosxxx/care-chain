@@ -14,7 +14,6 @@ const SIDEBAR_ITEMS = [
     icon: <FileText className="w-5 h-5" />,
   },
   { label: "Patients", href: "/patients", icon: <Users className="w-5 h-5" /> },
-  { label: "Logs", href: "/logs", icon: <ClipboardList className="w-5 h-5" /> },
 ];
 
 export default function RootLayout({

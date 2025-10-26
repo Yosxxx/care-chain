@@ -1,4 +1,4 @@
-import { SolanaProvider } from "@/components/solana-provider";
+import SolanaProvider from "@/components/solana-provider";
 import "./globals.css";
 import { Inter } from "next/font/google";
 

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Undo2 } from "lucide-react";
 import { GetHospitalData } from "@/action/GetHospitalData";
-import { useSolana } from "@/components/solana-provider";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -164,9 +163,6 @@ export default function Page() {
     { key: "description", label: "Description", textarea: true },
   ];
 
-  // ==================== WALLET CONNECTION ====================
-  const { isConnected } = useSolana();
-
   // ==================== RENDER ====================
   return (
     <main className="p-5">
@@ -219,11 +215,7 @@ export default function Page() {
           )}
 
           <div className="flex gap-x-5 mt-4">
-            <Button
-              className="flex-1"
-              onClick={handleDownloadZip}
-              disabled={!isConnected}
-            >
+            <Button className="flex-1" onClick={handleDownloadZip}>
               Download Updated ZIP
             </Button>
             <Button className="flex-1" variant="secondary">
