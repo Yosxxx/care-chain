@@ -13,18 +13,24 @@ import dynamic from "next/dynamic";
 import * as anchor from "@coral-xyz/anchor";
 import {
   useConnection,
-  useAnchorWallet, // <-- ADDED
+  useAnchorWallet,
+  useWallet, // <-- ADDED
 } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram } from "@solana/web3.js"; // <-- ADDED
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction, // <-- ADDED
+  type TransactionInstruction, // <-- ADDED
+} from "@solana/web3.js";
 import idl from "../../../../anchor.json";
 import {
   findPatientPda,
-  findConfigPda, // <-- ADDED
-  findPatientSeqPda, // <-- ADDED
-  findHospitalPda, // <-- ADDED
-  findGrantPda, // <-- ADDED
+  findConfigPda,
+  findPatientSeqPda,
+  findHospitalPda,
+  findGrantPda,
 } from "@/lib/pda";
-import bs58 from "bs58"; // <-- ADDED
+import bs58 from "bs58";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -54,11 +60,12 @@ export default function Page() {
 
   // --- SOLANA STATE & HOOKS ---
   const { connection } = useConnection();
-  const wallet = useAnchorWallet(); // <-- ADDED
+  const wallet = useAnchorWallet();
+  const { signTransaction: waSignTx } = useWallet(); // <-- ADDED
   const [patientCheckStatus, setPatientCheckStatus] = useState<string | null>(
     null
   );
-  const [status, setStatus] = useState(""); // <-- ADDED
+  const [status, setStatus] = useState("");
 
   // --- LIVE CHECKS STATE ---
   const [hospitalOk, setHospitalOk] = useState<boolean | null>(null);
@@ -68,12 +75,16 @@ export default function Page() {
   const [grantOk, setGrantOk] = useState<boolean | null>(null);
   const [grantErr, setGrantErr] = useState<string>("");
 
+  // --- CO-SIGN STATE (COPIED) ---
+  const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
+  const [coSignBase64, setCoSignBase64] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+
   const programId = useMemo(
     () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
     []
   );
 
-  // --- UPDATED: Provider & Program now use the wallet ---
   const provider = useMemo(
     () =>
       wallet
@@ -103,9 +114,18 @@ export default function Page() {
   const hexToU8 = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
   const b64ToU8 = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
 
-  // ==================== ENC UPLOAD (COPIED & MODIFIED) ====================
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("✅ Copied to clipboard.");
+    } catch {
+      setStatus("⚠️ Copy failed. Select & copy manually.");
+    }
+  };
+
+  // ==================== ENC UPLOAD (MODIFIED) ====================
   async function encUpload(
-    file: File, // <-- Modified to take file as arg
+    file: File,
     patientPk_b64: string,
     hospitalPk_b64: string
   ): Promise<{
@@ -118,14 +138,15 @@ export default function Page() {
     edekHospital_b64: string;
     kmsRef: string;
   }> {
-    if (!file) throw new Error("No file provided for upload"); // <-- Modified check
+    if (!file) throw new Error("No file provided for upload");
 
     const fd = new FormData();
-    fd.append("file", file); // <-- Use file from arg
+    fd.append("file", file);
     fd.append("contentType", file.type || "application/octet-stream");
-    fd.append("patientPk_b64", patientPk_b64); // Ed25519 pubkey, base64
-    fd.append("rsCreatorPk_b64", hospitalPk_b64); // Ed25519 pubkey, base64
+    fd.append("patientPk_b64", patientPk_b64);
+    fd.append("rsCreatorPk_b64", hospitalPk_b64);
 
+    // Make sure this API route matches your file structure
     const r = await fetch("/api/enc-upload", { method: "POST", body: fd });
 
     const text = await r.text();
@@ -134,7 +155,6 @@ export default function Page() {
   }
 
   // ==================== LIVE CHECKERS (COPIED & ADAPTED) ====================
-
   // Check 1: Is connected wallet a registered hospital?
   useEffect(() => {
     (async () => {
@@ -156,7 +176,7 @@ export default function Page() {
     })();
   }, [program, wallet?.publicKey]);
 
-  // Check 2: Does the patient pubkey exist? (Adapted from your original)
+  // Check 2: Does the patient pubkey exist?
   useEffect(() => {
     const checkPatient = async () => {
       if (!program || !patientPk) {
@@ -191,7 +211,7 @@ export default function Page() {
     };
 
     checkPatient();
-  }, [program, patientPk, record?.patient_pubkey]);
+  }, [program, patientPk?.toBase58()]);
 
   // Check 3: Does this hospital have a Write Grant from this patient?
   useEffect(() => {
@@ -228,6 +248,19 @@ export default function Page() {
       }
     })();
   }, [program, wallet?.publicKey, patientPk?.toBase58()]);
+
+  // Build shareable URL when base64 changes
+  useEffect(() => {
+    if (coSignBase64 && typeof window !== "undefined") {
+      setShareUrl(
+        `${window.location.origin}/co-sign?tx=${encodeURIComponent(
+          coSignBase64
+        )}`
+      );
+    } else {
+      setShareUrl("");
+    }
+  }, [coSignBase64]);
 
   // ==================== FETCH HOSPITAL INFO ====================
   useEffect(() => {
@@ -343,8 +376,34 @@ export default function Page() {
     URL.revokeObjectURL(link.href);
   };
 
-  // ==================== MAIN SUBMIT (NEW) ====================
+  // ==================== REFRESH TX (COPIED) ====================
+  const refreshCosignTx = async () => {
+    try {
+      if (!wallet || !lastIx) return;
+      setStatus("Refreshihng co-sign transaction...");
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+      const ltx = new Transaction({
+        feePayer: wallet.publicKey,
+        recentBlockhash: blockhash,
+      }).add(lastIx);
+
+      if (!waSignTx) throw new Error("Wallet cannot sign transactions.");
+      const signedByHospital = await waSignTx(ltx);
+
+      const b64 = Buffer.from(
+        signedByHospital.serialize({ requireAllSignatures: false })
+      ).toString("base64");
+
+      setCoSignBase64(b64);
+      setStatus("Share the new link/base64 with the patient.");
+    } catch (e: any) {
+      setStatus(`❌ ${e?.message || String(e)}`);
+    }
+  };
+
+  // ==================== MAIN SUBMIT (IMPLEMENTED) ====================
   const handleSubmitOnChain = async () => {
+    setCoSignBase64(""); // Clear previous tx
     try {
       setStatus("Checking preconditions...");
       if (!program || !wallet || !patientPk || !record)
@@ -371,7 +430,7 @@ export default function Page() {
         2
       );
 
-      // Derive Ed25519 public keys (base64) from Solana addresses
+      // Base64 public keys for the upload service
       const patientPk_b64 = u8ToB64(bs58.decode(record.patient_pubkey.trim()));
       const hospitalPk_b64 = u8ToB64(wallet.publicKey.toBytes());
 
@@ -403,15 +462,15 @@ export default function Page() {
       const patientSeq = await program.account.patientSeq.fetch(patientSeqPda);
       const seq = new anchor.BN(patientSeq.value);
 
-      const metaMime = "application/zip"; // <-- IMPORTANT
+      const metaMime = "application/zip";
       const sizeBn = new anchor.BN(sizeBytes);
       const hash32 = Array.from(hexToU8(cipherHashHex));
       const edekRoot = Buffer.from(b64ToU8(edekRoot_b64));
       const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
       const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
 
-      setStatus("Submitting transaction...");
-      const tx = await program.methods
+      setStatus("Building method...");
+      const method = program.methods
         .createRecord(
           seq,
           cidEnc,
@@ -426,10 +485,8 @@ export default function Page() {
           { kms: {} }, // edek_patient_algo
           { kms: {} }, // edek_hospital_algo
           kmsRef,
-
           1, // enc_version
           { xChaCha20: {} }, // enc_algo
-
           // --- Use 'record' state for on-chain attributes ---
           record.hospital_id || "",
           record.hospital_name || "",
@@ -440,7 +497,8 @@ export default function Page() {
           record.description || ""
         )
         .accounts({
-          uploader: wallet.publicKey,
+          uploader: wallet.publicKey, // hospital signer
+          payer: patientPk, // <-- CRITICAL FIX: Patient co-signer (rent payer)
           config: configPda,
           patient: patientPda,
           patientSeq: patientSeqPda,
@@ -455,12 +513,51 @@ export default function Page() {
             programId
           )[0],
           systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+        });
 
-      setStatus(`✅ Tx: ${tx}`);
+      // If both are the same wallet (dev), just send normally
+      if (wallet.publicKey.equals(patientPk)) {
+        setStatus("Submitting (single-signer test path)...");
+        const sig = await method.rpc();
+        setStatus(`✅ Tx: ${sig}`);
+        return;
+      }
+
+      // ---------- Multi-sign path (Hospital pays network fee) ----------
+      setStatus("Building instruction...");
+      const ix = await method.instruction();
+      setLastIx(ix); // save for refresh
+
+      setStatus("Compiling legacy message (feePayer = hospital)...");
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+
+      const ltx = new Transaction({
+        feePayer: wallet.publicKey, // hospital pays fee
+        recentBlockhash: blockhash,
+      }).add(ix);
+
+      if (!waSignTx) {
+        throw new Error(
+          "This wallet cannot sign transactions. Use Phantom/Backpack/Solflare."
+        );
+      }
+
+      setStatus("Signing as hospital (legacy tx)...");
+      const signedByHospital = await waSignTx(ltx);
+
+      // Serialize WITHOUT requiring all signatures (patient still missing)
+      const b64 = Buffer.from(
+        signedByHospital.serialize({ requireAllSignatures: false })
+      ).toString("base64");
+
+      setCoSignBase64(b64);
+      setStatus(
+        "Waiting for patient co-sign. Share the base64 or the link below with the patient."
+      );
+      // -----------------------------------------------------------------
     } catch (e: any) {
-      setStatus(`❌ ${e.message ?? String(e)}`);
+      const msg = e?.message || e?.toString?.() || "Unknown error";
+      setStatus(`❌ ${msg}`);
     }
   };
 
@@ -483,7 +580,7 @@ export default function Page() {
     { key: "description", label: "Description", textarea: true },
   ];
 
-  // --- READY STATE (NEW) ---
+  // --- READY STATE ---
   const readyToSubmit =
     !!program &&
     !!wallet?.publicKey &&
@@ -498,6 +595,8 @@ export default function Page() {
     <main className="p-5 max-w-2xl mx-auto">
       <header className="flex justify-between items-center mb-4">
         <h1 className="text-xl font-semibold">Edit & Submit Record</h1>
+        {/* You might want to add a WalletMultiButton here if it's not in the layout */}
+        {/* <WalletMultiButton /> */}
       </header>
 
       <Input
@@ -507,7 +606,7 @@ export default function Page() {
         className="mb-4"
       />
 
-      {/* --- STATUS BANNERS (NEW) --- */}
+      {/* --- STATUS BANNERS --- */}
       <div className="space-y-2 text-sm mb-4">
         {hospitalOk === false && (
           <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
@@ -600,7 +699,7 @@ export default function Page() {
             </Button>
             <Button
               className="flex-1"
-              variant="default" // <-- Changed from secondary
+              variant="default"
               onClick={handleSubmitOnChain}
               disabled={!readyToSubmit}
             >
@@ -608,8 +707,46 @@ export default function Page() {
             </Button>
           </div>
 
-          {/* --- RENDER SUBMIT STATUS (NEW) --- */}
-          {status && <p className="text-sm mt-4">{status}</p>}
+          {/* --- RENDER SUBMIT STATUS --- */}
+          {status && (
+            <p className="text-sm mt-4 whitespace-pre-wrap">{status}</p>
+          )}
+
+          {/* --- MULTI-SIGN OUTPUT (COPIED) --- */}
+          {coSignBase64 && (
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-medium">
+                Base64 transaction (hospital-signed). Send to the patient to
+                co-sign &amp; submit:
+              </label>
+              <textarea
+                readOnly
+                className="w-full border rounded p-2 text-xs font-mono h-40"
+                value={coSignBase64}
+              />
+              <div className="flex gap-2 items-center flex-wrap">
+                <Button size="sm" onClick={() => copyToClipboard(coSignBase64)}>
+                  Copy
+                </Button>
+                <Button size="sm" variant="secondary" onClick={refreshCosignTx}>
+                  Refresh co-sign TX
+                </Button>
+                {shareUrl && (
+                  <span className="text-xs break-all">
+                    or share this link:&nbsp;
+                    <a
+                      className="underline"
+                      href={shareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {shareUrl}
+                    </a>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </main>

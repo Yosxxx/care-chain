@@ -22,6 +22,17 @@
       "accounts": [
         {
           "name": "uploader",
+          "docs": [
+            "Hospital signer (initiator / fee payer on the client)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Patient must co-sign as payer (rent payer)"
+          ],
           "writable": true,
           "signer": true
         },
@@ -982,6 +993,11 @@
       "code": 6024,
       "name": "DescriptionTooLong",
       "msg": "Description too long"
+    },
+    {
+      "code": 6025,
+      "name": "PayerMustBePatient",
+      "msg": "Payer must be Patient"
     }
   ],
   "types": [
