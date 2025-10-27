@@ -32,6 +32,8 @@
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
     "jszip": "^3.10.1",
+    "libsodium": "^0.7.15",
+    "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^0.546.0",
     "next": "15.5.4",
     "react": "19.1.0",
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

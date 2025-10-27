@@ -1,12 +1,30 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent, useMemo } from "react";
 import JSZip from "jszip";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Undo2 } from "lucide-react";
 import { GetHospitalData } from "@/action/GetHospitalData";
+import dynamic from "next/dynamic";
+
+// --- SOLANA IMPORTS ---
+import * as anchor from "@coral-xyz/anchor";
+import {
+  useConnection,
+  useAnchorWallet, // <-- ADDED
+} from "@solana/wallet-adapter-react";
+import { PublicKey, SystemProgram } from "@solana/web3.js"; // <-- ADDED
+import idl from "../../../../anchor.json";
+import {
+  findPatientPda,
+  findConfigPda, // <-- ADDED
+  findPatientSeqPda, // <-- ADDED
+  findHospitalPda, // <-- ADDED
+  findGrantPda, // <-- ADDED
+} from "@/lib/pda";
+import bs58 from "bs58"; // <-- ADDED
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -34,6 +52,183 @@ export default function Page() {
   const [images, setImages] = useState<{ name: string; blob: Blob }[]>([]);
   const [hospitalData, setHospitalData] = useState<HospitalData | null>(null);
 
+  // --- SOLANA STATE & HOOKS ---
+  const { connection } = useConnection();
+  const wallet = useAnchorWallet(); // <-- ADDED
+  const [patientCheckStatus, setPatientCheckStatus] = useState<string | null>(
+    null
+  );
+  const [status, setStatus] = useState(""); // <-- ADDED
+
+  // --- LIVE CHECKS STATE ---
+  const [hospitalOk, setHospitalOk] = useState<boolean | null>(null);
+  const [patientAccountOk, setPatientAccountOk] = useState<boolean | null>(
+    null
+  );
+  const [grantOk, setGrantOk] = useState<boolean | null>(null);
+  const [grantErr, setGrantErr] = useState<string>("");
+
+  const programId = useMemo(
+    () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
+    []
+  );
+
+  // --- UPDATED: Provider & Program now use the wallet ---
+  const provider = useMemo(
+    () =>
+      wallet
+        ? new anchor.AnchorProvider(connection, wallet, {
+            commitment: "confirmed",
+          })
+        : null,
+    [connection, wallet]
+  );
+
+  const program = useMemo(
+    () => (provider ? new anchor.Program(idl as anchor.Idl, provider) : null),
+    [provider]
+  );
+
+  const patientPk = useMemo(() => {
+    if (!record?.patient_pubkey) return null;
+    try {
+      return new PublicKey(record.patient_pubkey.trim());
+    } catch {
+      return null;
+    }
+  }, [record?.patient_pubkey]);
+
+  // ==================== HELPERS (COPIED) ====================
+  const u8ToB64 = (u8: Uint8Array) => Buffer.from(u8).toString("base64");
+  const hexToU8 = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
+  const b64ToU8 = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
+
+  // ==================== ENC UPLOAD (COPIED & MODIFIED) ====================
+  async function encUpload(
+    file: File, // <-- Modified to take file as arg
+    patientPk_b64: string,
+    hospitalPk_b64: string
+  ): Promise<{
+    cidEnc: string;
+    metaCid: string;
+    sizeBytes: number;
+    cipherHashHex: string;
+    edekRoot_b64: string;
+    edekPatient_b64: string;
+    edekHospital_b64: string;
+    kmsRef: string;
+  }> {
+    if (!file) throw new Error("No file provided for upload"); // <-- Modified check
+
+    const fd = new FormData();
+    fd.append("file", file); // <-- Use file from arg
+    fd.append("contentType", file.type || "application/octet-stream");
+    fd.append("patientPk_b64", patientPk_b64); // Ed25519 pubkey, base64
+    fd.append("rsCreatorPk_b64", hospitalPk_b64); // Ed25519 pubkey, base64
+
+    const r = await fetch("/api/enc-upload", { method: "POST", body: fd });
+
+    const text = await r.text();
+    if (!r.ok) throw new Error(text);
+    return JSON.parse(text);
+  }
+
+  // ==================== LIVE CHECKERS (COPIED & ADAPTED) ====================
+
+  // Check 1: Is connected wallet a registered hospital?
+  useEffect(() => {
+    (async () => {
+      if (!program || !wallet?.publicKey) {
+        setHospitalOk(null);
+        return;
+      }
+      try {
+        const hospitalPda = findHospitalPda(
+          program.programId,
+          wallet.publicKey
+        );
+        // @ts-expect-error anchor typing
+        const hAcc = await program.account.hospital.fetchNullable(hospitalPda);
+        setHospitalOk(!!hAcc);
+      } catch {
+        setHospitalOk(false);
+      }
+    })();
+  }, [program, wallet?.publicKey]);
+
+  // Check 2: Does the patient pubkey exist? (Adapted from your original)
+  useEffect(() => {
+    const checkPatient = async () => {
+      if (!program || !patientPk) {
+        setPatientAccountOk(null);
+        if (record?.patient_pubkey) {
+          setPatientCheckStatus("❌ Invalid Pubkey format");
+        } else {
+          setPatientCheckStatus(null);
+        }
+        return;
+      }
+
+      try {
+        setPatientCheckStatus("Checking patient account...");
+        const patientPda = findPatientPda(program.programId, patientPk);
+        // @ts-expect-error anchor typing
+        const pAcc = await program.account.patient.fetchNullable(patientPda);
+
+        if (pAcc) {
+          setPatientAccountOk(true);
+          setPatientCheckStatus("✅ Patient account exists on-chain.");
+        } else {
+          setPatientAccountOk(false);
+          setPatientCheckStatus(
+            "❌ Patient account not found (not registered)."
+          );
+        }
+      } catch (e: any) {
+        setPatientAccountOk(false);
+        setPatientCheckStatus(`Error: ${e.message}`);
+      }
+    };
+
+    checkPatient();
+  }, [program, patientPk, record?.patient_pubkey]);
+
+  // Check 3: Does this hospital have a Write Grant from this patient?
+  useEffect(() => {
+    (async () => {
+      setGrantErr("");
+      if (!program || !wallet?.publicKey || !patientPk) {
+        setGrantOk(null);
+        return;
+      }
+      try {
+        const patientPda = findPatientPda(program.programId, patientPk);
+        const grantWritePda = findGrantPda(
+          program.programId,
+          patientPda,
+          wallet.publicKey,
+          2 // GrantLevel.Write
+        );
+        // @ts-expect-error anchor typing
+        const gAcc = await program.account.grant.fetchNullable(grantWritePda);
+        if (!gAcc) {
+          setGrantOk(false);
+          setGrantErr("Grant not found");
+          return;
+        }
+        if (gAcc.revoked) {
+          setGrantOk(false);
+          setGrantErr("Grant revoked");
+          return;
+        }
+        setGrantOk(true);
+      } catch (e: any) {
+        setGrantOk(false);
+        setGrantErr(e?.message ?? "Grant check failed");
+      }
+    })();
+  }, [program, wallet?.publicKey, patientPk?.toBase58()]);
+
   // ==================== FETCH HOSPITAL INFO ====================
   useEffect(() => {
     const fetchHospital = async () => {
@@ -50,6 +245,7 @@ export default function Page() {
 
   // ==================== LOAD ZIP ====================
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    // ... (This function remains unchanged) ...
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -103,6 +299,7 @@ export default function Page() {
     record && original && setRecord({ ...record, [key]: original[key] });
 
   const handleFill = () => {
+    // ... (This function remains unchanged) ...
     if (!record || !hospitalData) return;
     setRecord({
       ...record,
@@ -113,6 +310,7 @@ export default function Page() {
   };
 
   const handleDownloadZip = async () => {
+    // ... (This function remains unchanged) ...
     if (!record) return;
 
     const zip = new JSZip();
@@ -145,6 +343,127 @@ export default function Page() {
     URL.revokeObjectURL(link.href);
   };
 
+  // ==================== MAIN SUBMIT (NEW) ====================
+  const handleSubmitOnChain = async () => {
+    try {
+      setStatus("Checking preconditions...");
+      if (!program || !wallet || !patientPk || !record)
+        throw new Error("Program, wallet, patient, or record missing");
+      if (!hospitalOk)
+        throw new Error("Hospital not registered for this wallet.");
+      if (!patientAccountOk)
+        throw new Error(
+          "Patient not registered. Ask the patient to upsert first."
+        );
+      if (!grantOk)
+        throw new Error(
+          grantErr || "Write access not granted by this patient."
+        );
+
+      const configPda = findConfigPda(programId);
+      const patientPda = findPatientPda(programId, patientPk);
+      const patientSeqPda = findPatientSeqPda(programId, patientPda);
+      const hospitalPda = findHospitalPda(programId, wallet.publicKey);
+      const grantWritePda = findGrantPda(
+        programId,
+        patientPda,
+        wallet.publicKey,
+        2
+      );
+
+      // Derive Ed25519 public keys (base64) from Solana addresses
+      const patientPk_b64 = u8ToB64(bs58.decode(record.patient_pubkey.trim()));
+      const hospitalPk_b64 = u8ToB64(wallet.publicKey.toBytes());
+
+      // --- GENERATE ZIP IN MEMORY ---
+      setStatus("Zipping record...");
+      const zip = new JSZip();
+      zip.file("medical_record.json", JSON.stringify(record, null, 2));
+      images.forEach((img) => zip.file(img.name, img.blob));
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const finalZipFile = new File([zipBlob], zipName || "record.zip", {
+        type: "application/zip",
+      });
+      // --- END ZIP ---
+
+      setStatus("Encrypting & uploading zip...");
+      const {
+        cidEnc,
+        metaCid,
+        sizeBytes,
+        cipherHashHex,
+        edekRoot_b64,
+        edekPatient_b64,
+        edekHospital_b64,
+        kmsRef,
+      } = await encUpload(finalZipFile, patientPk_b64, hospitalPk_b64);
+
+      setStatus("Deriving PDAs & sequence...");
+      // @ts-expect-error anchor typing
+      const patientSeq = await program.account.patientSeq.fetch(patientSeqPda);
+      const seq = new anchor.BN(patientSeq.value);
+
+      const metaMime = "application/zip"; // <-- IMPORTANT
+      const sizeBn = new anchor.BN(sizeBytes);
+      const hash32 = Array.from(hexToU8(cipherHashHex));
+      const edekRoot = Buffer.from(b64ToU8(edekRoot_b64));
+      const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
+      const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
+
+      setStatus("Submitting transaction...");
+      const tx = await program.methods
+        .createRecord(
+          seq,
+          cidEnc,
+          metaMime,
+          metaCid,
+          sizeBn,
+          hash32,
+          edekRoot,
+          edekForPatient,
+          edekForHospital,
+          { kms: {} }, // edek_root_algo
+          { kms: {} }, // edek_patient_algo
+          { kms: {} }, // edek_hospital_algo
+          kmsRef,
+
+          1, // enc_version
+          { xChaCha20: {} }, // enc_algo
+
+          // --- Use 'record' state for on-chain attributes ---
+          record.hospital_id || "",
+          record.hospital_name || "",
+          record.doctor_name || "",
+          record.doctor_id || "",
+          record.diagnosis || "",
+          record.keywords || "",
+          record.description || ""
+        )
+        .accounts({
+          uploader: wallet.publicKey,
+          config: configPda,
+          patient: patientPda,
+          patientSeq: patientSeqPda,
+          hospital: hospitalPda,
+          grantWrite: grantWritePda,
+          record: PublicKey.findProgramAddressSync(
+            [
+              Buffer.from("record"),
+              patientPda.toBuffer(),
+              seq.toArrayLike(Buffer, "le", 8),
+            ],
+            programId
+          )[0],
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      setStatus(`✅ Tx: ${tx}`);
+    } catch (e: any) {
+      setStatus(`❌ ${e.message ?? String(e)}`);
+    }
+  };
+
   // ==================== FIELD CONFIG ====================
   const fields: {
     key: keyof MedicalRecord;
@@ -152,6 +471,7 @@ export default function Page() {
     textarea?: boolean;
     fillable?: boolean;
   }[] = [
+    // ... (This array remains unchanged) ...
     { key: "patient_pubkey", label: "Patient Pubkey" },
     { key: "hospital_id", label: "Hospital ID", fillable: true },
     { key: "hospital_pubkey", label: "Hospital Pubkey", fillable: true },
@@ -163,10 +483,54 @@ export default function Page() {
     { key: "description", label: "Description", textarea: true },
   ];
 
+  // --- READY STATE (NEW) ---
+  const readyToSubmit =
+    !!program &&
+    !!wallet?.publicKey &&
+    !!patientPk &&
+    !!record &&
+    hospitalOk === true &&
+    patientAccountOk === true &&
+    grantOk === true;
+
   // ==================== RENDER ====================
   return (
-    <main className="p-5">
-      <Input type="file" accept=".zip" onChange={handleFileUpload} />
+    <main className="p-5 max-w-2xl mx-auto">
+      <header className="flex justify-between items-center mb-4">
+        <h1 className="text-xl font-semibold">Edit & Submit Record</h1>
+      </header>
+
+      <Input
+        type="file"
+        accept=".zip"
+        onChange={handleFileUpload}
+        className="mb-4"
+      />
+
+      {/* --- STATUS BANNERS (NEW) --- */}
+      <div className="space-y-2 text-sm mb-4">
+        {hospitalOk === false && (
+          <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
+            This wallet is <b>not</b> a registered hospital authority.
+          </div>
+        )}
+        {patientAccountOk === false && record?.patient_pubkey && (
+          <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
+            Patient not registered. Ask them to upsert on the Patients page.
+          </div>
+        )}
+        {grantOk === false && (
+          <div className="rounded border border-yellow-600/40 bg-yellow-600/10 p-2 text-yellow-600">
+            Write grant missing:{" "}
+            {grantErr || "patient must grant Write access to this hospital."}
+          </div>
+        )}
+        {hospitalOk && patientAccountOk && grantOk && (
+          <div className="rounded border border-emerald-600/40 bg-emerald-600/10 p-2 text-emerald-600">
+            All checks passed. You can submit the record.
+          </div>
+        )}
+      </div>
 
       {record && zipName && (
         <section className="flex flex-col gap-y-3 border p-3 mt-5 rounded">
@@ -193,10 +557,26 @@ export default function Page() {
                 </Button>
                 {fillable && <Button onClick={handleFill}>Fill</Button>}
               </div>
+
+              {/* --- RENDER PATIENT CHECK STATUS --- */}
+              {key === "patient_pubkey" && patientCheckStatus && (
+                <p
+                  className={`mt-1 text-sm ${
+                    patientCheckStatus.startsWith("✅")
+                      ? "text-emerald-600"
+                      : patientCheckStatus.startsWith("❌")
+                      ? "text-red-600"
+                      : "text-gray-500"
+                  }`}
+                >
+                  {patientCheckStatus}
+                </p>
+              )}
             </div>
           ))}
 
           {previews.length > 0 && (
+            // ... (image preview grid remains unchanged) ...
             <div className="mt-3 grid grid-cols-3 gap-2">
               {previews.map((src, i) => (
                 <div
@@ -218,10 +598,18 @@ export default function Page() {
             <Button className="flex-1" onClick={handleDownloadZip}>
               Download Updated ZIP
             </Button>
-            <Button className="flex-1" variant="secondary">
-              Reject
+            <Button
+              className="flex-1"
+              variant="default" // <-- Changed from secondary
+              onClick={handleSubmitOnChain}
+              disabled={!readyToSubmit}
+            >
+              Submit On-Chain
             </Button>
           </div>
+
+          {/* --- RENDER SUBMIT STATUS (NEW) --- */}
+          {status && <p className="text-sm mt-4">{status}</p>}
         </section>
       )}
     </main>
