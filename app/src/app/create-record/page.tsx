@@ -209,13 +209,23 @@ export default function CreateRecordPage() {
           edekRoot,
           edekForPatient,
           edekForHospital,
-          { kms: {} },
-          { kms: {} },
-          { kms: {} },
+          { kms: {} }, // edek_root_algo
+          { kms: {} }, // edek_patient_algo
+          { kms: {} }, // edek_hospital_algo
           kmsRef,
-          meta.description,
-          1,
-          { xChaCha20: {} }
+          
+          1, // enc_version
+          { xChaCha20: {} }, // enc_algo
+
+          // --- START: NEW ON-CHAIN ATTRIBUTES ---
+          meta.hospital_id,
+          meta.hospital_name,
+          meta.doctor_name,
+          meta.doctor_id,
+          meta.diagnosis,
+          meta.keywords,
+          meta.description // <-- This is the new description field
+          // --- END: NEW ON-CHAIN ATTRIBUTES ---
         )
         .accounts({
           uploader: wallet.publicKey,

@@ -76,6 +76,22 @@ pub enum RecordError {
     NoteTooLong,
     #[msg("kms_ref too long")]
     KmsRefTooLong,
+
+    // --- New errors for on-chain attributes ---
+    #[msg("Hospital ID too long")]
+    HospitalIdTooLong,
+    #[msg("Hospital name too long")]
+    HospitalNameTooLong,
+    #[msg("Doctor name too long")]
+    DoctorNameTooLong,
+    #[msg("Doctor ID too long")]
+    DoctorIdTooLong,
+    #[msg("Diagnosis too long")]
+    DiagnosisTooLong,
+    #[msg("Keywords too long")]
+    KeywordsTooLong,
+    #[msg("Description too long")]
+    DescriptionTooLong,
 }
 
 #[error_code]

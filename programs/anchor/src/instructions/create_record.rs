@@ -19,9 +19,17 @@ pub fn record_create(
     edek_patient_algo: WrapAlgo,
     edek_hospital_algo: WrapAlgo,
     kms_ref: String,
-    note: String,
     enc_version: u16,
     enc_algo: EncAlgo,
+    // --- START: NEW ARGUMENTS ---
+    hospital_id: String,
+    hospital_name: String,
+    doctor_name: String,
+    doctor_id: String,
+    diagnosis: String,
+    keywords: String,
+    description: String,
+    // --- END: NEW ARGUMENTS ---
 ) -> Result<()> {
     require!(!ctx.accounts.config.paused, RecordError::Paused);
     require_keys_eq!(
@@ -39,7 +47,16 @@ pub fn record_create(
     let mime_trim = meta_mime.trim();
     let meta_trim = meta_cid.trim();
     let kms_trim = kms_ref.trim();
-    let note_trim = note.trim();
+
+    // --- START: TRIM NEW STRINGS ---
+    let hospital_id_trim = hospital_id.trim();
+    let hospital_name_trim = hospital_name.trim();
+    let doctor_name_trim = doctor_name.trim();
+    let doctor_id_trim = doctor_id.trim();
+    let diagnosis_trim = diagnosis.trim();
+    let keywords_trim = keywords.trim();
+    let description_trim = description.trim();
+    // --- END: TRIM NEW STRINGS ---
 
     require!(!cid_trim.is_empty(), RecordError::EmptyCidEnc);
     require!(cid_trim.len() <= MAX_CID_LEN, RecordError::CidTooLong);
@@ -51,10 +68,38 @@ pub fn record_create(
     );
 
     require!(meta_trim.len() <= MAX_CID_LEN, RecordError::MetaCidTooLong);
-    require!(note_trim.len() <= MAX_NOTE_LEN, RecordError::NoteTooLong);
     require!(
         kms_trim.len() <= MAX_KMS_REF_LEN,
         RecordError::KmsRefTooLong
+    );
+
+    require!(
+        hospital_id_trim.len() <= MAX_HOSPITAL_ID_LEN,
+        RecordError::HospitalIdTooLong
+    );
+    require!(
+        hospital_name_trim.len() <= MAX_HOSPITAL_NAME_LEN,
+        RecordError::HospitalNameTooLong
+    );
+    require!(
+        doctor_name_trim.len() <= MAX_DOCTOR_NAME_LEN,
+        RecordError::DoctorNameTooLong
+    );
+    require!(
+        doctor_id_trim.len() <= MAX_DOCTOR_ID_LEN,
+        RecordError::DoctorIdTooLong
+    );
+    require!(
+        diagnosis_trim.len() <= MAX_DIAGNOSIS_LEN,
+        RecordError::DiagnosisTooLong
+    );
+    require!(
+        keywords_trim.len() <= MAX_KEYWORDS_LEN,
+        RecordError::KeywordsTooLong
+    );
+    require!(
+        description_trim.len() <= MAX_DESCRIPTION_LEN,
+        RecordError::DescriptionTooLong
     );
 
     require!(size_bytes > 0, RecordError::SizeZero);
@@ -92,13 +137,29 @@ pub fn record_create(
     rec.edek_patient_algo = edek_patient_algo;
     rec.edek_hospital_algo = edek_hospital_algo;
     rec.kms_ref = kms_trim.to_string();
-    rec.note = note_trim.to_string();
     rec.seq = seq;
     rec.enc_version = enc_version;
     rec.enc_algo = enc_algo;
     rec.created_at = now;
     rec.updated_at = now;
     rec.bump = ctx.bumps.record;
+
+    // --- START: ASSIGN NEW FIELDS ---
+    
+    // Assign fields from context (denormalization)
+    rec.patient_pubkey = ctx.accounts.patient.patient_pubkey;
+    rec.hospital_pubkey = ctx.accounts.hospital.authority; // This is the uploader
+    
+    // Assign fields from new arguments
+    rec.hospital_id = hospital_id_trim.to_string();
+    rec.hospital_name = hospital_name_trim.to_string();
+    rec.doctor_name = doctor_name_trim.to_string();
+    rec.doctor_id = doctor_id_trim.to_string();
+    rec.diagnosis = diagnosis_trim.to_string();
+    rec.keywords = keywords_trim.to_string();
+    rec.description = description_trim.to_string();
+    
+    // --- END: ASSIGN NEW FIELDS ---
 
     emit!(RecordCreated {
         record: rec.key(),

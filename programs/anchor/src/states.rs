@@ -21,6 +21,14 @@ pub const SCOPE_READ: u8 = 0b0000_0001;
 pub const SCOPE_WRITE: u8 = 0b0000_0010;
 pub const SCOPE_ADMIN: u8 = 0b0000_0100;
 
+pub const MAX_HOSPITAL_ID_LEN: usize = 64;
+pub const MAX_HOSPITAL_NAME_LEN: usize = 128;
+pub const MAX_DOCTOR_NAME_LEN: usize = 128;
+pub const MAX_DOCTOR_ID_LEN: usize = 64;
+pub const MAX_DIAGNOSIS_LEN: usize = 256;
+pub const MAX_KEYWORDS_LEN: usize = 256;
+pub const MAX_DESCRIPTION_LEN: usize = 1024; // For textarea
+
 #[derive(AnchorSerialize, AnchorDeserialize, InitSpace, Clone, Copy, PartialEq, Eq)]
 pub enum WrapAlgo {
     Kms,
@@ -133,9 +141,6 @@ pub struct Record {
     #[max_len(MAX_KMS_REF_LEN)]
     pub kms_ref: String,
 
-    #[max_len(MAX_NOTE_LEN)]
-    pub note: String,
-
     pub seq: u64,
 
     pub enc_version: u16,
@@ -145,6 +150,37 @@ pub struct Record {
     pub updated_at: i64,
 
     pub bump: u8,
+
+    // --- START: NEW ON-CHAIN ATTRIBUTES ---
+    
+    /// The patient's main wallet pubkey (denormalized from Patient account)
+    pub patient_pubkey: Pubkey,
+
+    /// The hospital's authority pubkey (denormalized from Hospital account)
+    pub hospital_pubkey: Pubkey,
+
+    #[max_len(MAX_HOSPITAL_ID_LEN)]
+    pub hospital_id: String,
+
+    #[max_len(MAX_HOSPITAL_NAME_LEN)]
+    pub hospital_name: String,
+
+    #[max_len(MAX_DOCTOR_NAME_LEN)]
+    pub doctor_name: String,
+
+    #[max_len(MAX_DOCTOR_ID_LEN)]
+    pub doctor_id: String,
+
+    #[max_len(MAX_DIAGNOSIS_LEN)]
+    pub diagnosis: String,
+
+    #[max_len(MAX_KEYWORDS_LEN)]
+    pub keywords: String, // e.g., "covid,xray,chest"
+
+    #[max_len(MAX_DESCRIPTION_LEN)]
+    pub description: String,
+    
+    // --- END: NEW ON-CHAIN ATTRIBUTES ---
 }
 
 /// PDA: [SEED_ACCESS, patient, record, grantee]

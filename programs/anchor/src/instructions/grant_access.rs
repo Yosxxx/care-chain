@@ -6,7 +6,7 @@ use anchor_lang::prelude::*;
 pub fn access_grant(
     ctx: Context<GrantAccess>,
     scope: u8,
-    expires_at: Option<i64>,
+    duration_sec: Option<i64>, // CHANGED: This is now a duration, not an absolute time
 ) -> Result<()> {
     require_keys_eq!(
         ctx.accounts.patient.patient_pubkey,
@@ -18,15 +18,26 @@ pub fn access_grant(
     require!(scope != 0 && (scope & !allowed) == 0, AccessError::InvalidScope);
 
     let now = Clock::get()?.unix_timestamp;
-    if let Some(exp) = expires_at {
-        require!(exp > now, AccessError::BadExpiry);
-    }
+
+    // --- LOGIC FLIPPED ---
+    // 1. We now receive a duration, not an absolute timestamp.
+    // 2. We calculate the absolute expires_at timestamp on-chain.
+    let final_expires_at: Option<i64> = if let Some(duration) = duration_sec {
+        // 3. The duration must be a positive number of seconds.
+        require!(duration > 0, AccessError::BadExpiry);
+        // 4. Calculate the final absolute time.
+        Some(now + duration)
+    } else {
+        // None means the grant is permanent (never expires).
+        None
+    };
+    // --- END OF CHANGE ---
 
     let grant = &mut ctx.accounts.grant;
     grant.patient = ctx.accounts.patient.key();
     grant.grantee = ctx.accounts.grantee.key();
     grant.scope = scope;
-    grant.expires_at = expires_at;
+    grant.expires_at = final_expires_at; // CHANGED: Store the calculated absolute time
 
     grant.created_by = ctx.accounts.authority.key();
     grant.created_at = now;
@@ -41,7 +52,7 @@ pub fn access_grant(
         patient: grant.patient,
         grantee: grant.grantee,
         scope,
-        expires_at,
+        expires_at: final_expires_at, // CHANGED: Emit the calculated absolute time
         created_by: grant.created_by,
         created_at: now,
     });
@@ -50,7 +61,7 @@ pub fn access_grant(
 }
 
 #[derive(Accounts)]
-#[instruction(scope: u8, expires_at: Option<i64>)]
+#[instruction(scope: u8, duration_sec: Option<i64>)] // CHANGED: Renamed from expires_at
 pub struct GrantAccess<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -69,8 +80,8 @@ pub struct GrantAccess<'info> {
     pub patient: Account<'info, Patient>,
 
     #[account(
-        init,
-        payer = authority, 
+        init_if_needed,
+        payer = authority,
         space = 8 + Grant::INIT_SPACE,
         seeds = [SEED_GRANT, patient.key().as_ref(), grantee.key().as_ref(), &[scope]],
         bump

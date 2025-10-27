@@ -1,5 +1,5 @@
 {
-  "address": "2HZmbrh7agvx2M2z7PjY8U97fpXGuVTouVeVJRvDTXnq",
+  "address": "BLEw7o5excmgRLfLp24TdUgzYKkXL6s6oYxrG3SNvKxg",
   "metadata": {
     "name": "anchor",
     "version": "0.1.0",
@@ -226,10 +226,6 @@
           "type": "string"
         },
         {
-          "name": "note",
-          "type": "string"
-        },
-        {
           "name": "enc_version",
           "type": "u16"
         },
@@ -240,6 +236,34 @@
               "name": "EncAlgo"
             }
           }
+        },
+        {
+          "name": "hospital_id",
+          "type": "string"
+        },
+        {
+          "name": "hospital_name",
+          "type": "string"
+        },
+        {
+          "name": "doctor_name",
+          "type": "string"
+        },
+        {
+          "name": "doctor_id",
+          "type": "string"
+        },
+        {
+          "name": "diagnosis",
+          "type": "string"
+        },
+        {
+          "name": "keywords",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
         }
       ]
     },
@@ -923,6 +947,41 @@
       "code": 6017,
       "name": "KmsRefTooLong",
       "msg": "kms_ref too long"
+    },
+    {
+      "code": 6018,
+      "name": "HospitalIdTooLong",
+      "msg": "Hospital ID too long"
+    },
+    {
+      "code": 6019,
+      "name": "HospitalNameTooLong",
+      "msg": "Hospital name too long"
+    },
+    {
+      "code": 6020,
+      "name": "DoctorNameTooLong",
+      "msg": "Doctor name too long"
+    },
+    {
+      "code": 6021,
+      "name": "DoctorIdTooLong",
+      "msg": "Doctor ID too long"
+    },
+    {
+      "code": 6022,
+      "name": "DiagnosisTooLong",
+      "msg": "Diagnosis too long"
+    },
+    {
+      "code": 6023,
+      "name": "KeywordsTooLong",
+      "msg": "Keywords too long"
+    },
+    {
+      "code": 6024,
+      "name": "DescriptionTooLong",
+      "msg": "Description too long"
     }
   ],
   "types": [
@@ -1396,10 +1455,6 @@
             "type": "string"
           },
           {
-            "name": "note",
-            "type": "string"
-          },
-          {
             "name": "seq",
             "type": "u64"
           },
@@ -1426,6 +1481,48 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "patient_pubkey",
+            "docs": [
+              "The patient's main wallet pubkey (denormalized from Patient account)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital_pubkey",
+            "docs": [
+              "The hospital's authority pubkey (denormalized from Hospital account)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital_id",
+            "type": "string"
+          },
+          {
+            "name": "hospital_name",
+            "type": "string"
+          },
+          {
+            "name": "doctor_name",
+            "type": "string"
+          },
+          {
+            "name": "doctor_id",
+            "type": "string"
+          },
+          {
+            "name": "diagnosis",
+            "type": "string"
+          },
+          {
+            "name": "keywords",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "type": "string"
           }
         ]
       }

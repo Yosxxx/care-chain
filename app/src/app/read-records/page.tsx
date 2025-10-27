@@ -19,10 +19,20 @@ type Rec = {
   pda: string;
   cidEnc: string;
   metaCid: string;
-  note: string;
-  hospital: string;
+  // note: string; // <-- REMOVED
+  hospital: string; // This is the hospital PDA
   sizeBytes: number;
   createdAt: string;
+
+  // --- ADD NEW FIELDS ---
+  hospital_id: string;
+  hospital_name: string;
+  doctor_name: string;
+  doctor_id: string;
+  diagnosis: string;
+  keywords: string;
+  description: string;
+  // --- END NEW FIELDS ---
 };
 
 function deriveNonce(b: Uint8Array, idx: number) {
@@ -104,10 +114,20 @@ export default function ReadRecordsPage() {
             pda: recordPda.toBase58(),
             cidEnc: rec.cidEnc,
             metaCid: rec.metaCid,
-            note: rec.note,
+            // note: rec.note, // <-- REMOVED
             hospital: rec.hospital.toBase58(),
             sizeBytes: Number(rec.sizeBytes),
             createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
+
+            // --- ADD NEW FIELDS (use camelCase from Anchor) ---
+            hospital_id: rec.hospitalId,
+            hospital_name: rec.hospitalName,
+            doctor_name: rec.doctorName,
+            doctor_id: rec.doctorId,
+            diagnosis: rec.diagnosis,
+            keywords: rec.keywords,
+            description: rec.description,
+            // --- END NEW FIELDS ---
           });
         }
 
@@ -227,27 +247,69 @@ export default function ReadRecordsPage() {
       {loading && <p>Loading records…</p>}
 
       {records.map((r) => (
-        <div key={r.pda} className="border rounded p-3 text-sm space-y-1">
-          <div className="font-semibold">Record #{r.seq}</div>
-
-          <div className="font-mono text-xs break-all">
-            <span className="text-gray-500">PDA:</span> {r.pda}
+        <div key={r.pda} className="border rounded-lg p-4 text-sm space-y-3 shadow-sm">
+          {/* Card Header */}
+          <div className="flex justify-between items-center pb-2 border-b">
+            <div className="font-semibold text-base">Record #{r.seq}</div>
+            <div className="text-xs text-gray-500">{r.createdAt}</div>
           </div>
 
-          <div className="font-mono text-xs break-all">
-            <span className="text-gray-500">CID Enc:</span> {r.cidEnc}
+          {/* On-Chain Metadata */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <div className="text-gray-500 font-medium">Hospital</div>
+              <div>{r.hospital_name || <span className="opacity-50">(N/A)</span>}</div>
+              <div className="font-mono text-gray-400">{r.hospital_id || "N/A"}</div>
+            </div>
+            <div>
+              <div className="text-gray-500 font-medium">Doctor</div>
+              <div>{r.doctor_name || <span className="opacity-50">(N/A)</span>}</div>
+              <div className="font-mono text-gray-400">{r.doctor_id || "N/A"}</div>
+            </div>
           </div>
 
-          <div className="text-xs opacity-70">From Hospital: {r.hospital}</div>
-          <div className="text-xs opacity-70">Created: {r.createdAt}</div>
+          {r.diagnosis && (
+            <div className="pt-1">
+              <div className="font-medium text-xs text-gray-500">Diagnosis</div>
+              <p className="text-sm text-black">{r.diagnosis}</p>
+            </div>
+          )}
+          
+          {r.description && (
+            <div className="pt-1">
+              <div className="font-medium text-xs text-gray-500">Description</div>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.description}</p>
+            </div>
+          )}
 
-          <button
-            className="text-blue-600 underline mt-2 disabled:opacity-50"
-            onClick={() => decryptAndView(r)}
-            disabled={patientOk !== true}
-          >
-            View
-          </button>
+          {r.keywords && (
+            <div className="pt-1">
+              <div className="font-medium text-xs text-gray-500">Keywords</div>
+              <p className="text-xs text-gray-600">{r.keywords}</p>
+            </div>
+          )}
+
+          {/* Action Button */}
+          <div className="pt-3 border-t">
+            <button
+              className="text-blue-600 hover:text-blue-800 underline disabled:opacity-50 font-medium"
+              onClick={() => decryptAndView(r)}
+              disabled={patientOk !== true}
+            >
+              View Encrypted File
+            </button>
+          </div>
+
+          {/* Technical Details (Optional: can be hidden in a details/summary tag) */}
+          <details className="pt-2 text-xs text-gray-400">
+            <summary className="cursor-pointer hover:text-gray-600">Technical Details</summary>
+            <div className="font-mono break-all space-y-1 pt-2">
+              <div><span className="text-gray-500">PDA:</span> {r.pda}</div>
+              <div><span className="text-gray-500">CID Enc:</span> {r.cidEnc}</div>
+              <div><span className="text-gray-500">Hospital PDA:</span> {r.hospital}</div>
+            </div>
+          </details>
+
         </div>
       ))}
 
