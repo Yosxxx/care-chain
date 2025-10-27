@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
+
 import {
   Collapsible,
   CollapsibleContent,
@@ -395,10 +395,10 @@ export default function Page() {
     <main className="mx-auto max-w-2xl p-6 space-y-6">
       <header className="font-architekt p-2 border rounded">
         <div className="flex justify-between items-center">
-          <div className="flex text-2xl font-bold gap-x-2 items-center">
+          <div className="flex font-bold gap-x-2 items-center">
             <Search size={20} /> Search for Hospitals
           </div>
-          <div>░░░░░░░░░░░░░░░░░░░░░░░░░░</div>
+          <div>░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░</div>
         </div>
       </header>
 
@@ -433,80 +433,163 @@ export default function Page() {
       )}
 
       {/* Grantee Selection Section */}
-      <section className="border rounded p-6 space-y-4">
-        {/* Hospital verification (only if a grantee is searched) */}
+      <section className="border rounded-lg p-6 space-y-6 bg-white shadow-sm">
         {activeGranteeStr.trim() ? (
-          <div className="text-sm">
+          <>
             {hospital ? (
-              <main>
-                <div>
-                  <div className="font-medium flex items-center gap-x-2">
-                    <div className="bg-green-200 rounded-full p-2">
+              <main className="space-y-6">
+                {/* ✅ Hospital Verification Card */}
+                <div className="border rounded-md p-4 bg-green-50 border-green-200">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="bg-green-200 p-2 rounded-full">
                       <BookCheck className="text-green-800" />
                     </div>
-                    <div>
-                      <div className="text-green-800">Hospital Verified</div>
-                      Authority confirmed and active
+                    <div className="flex-1">
+                      <h2 className="text-green-800 font-semibold text-sm">
+                        Hospital Verified
+                      </h2>
+                      <p className="text-xs text-green-700">
+                        Authority confirmed and active
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3 text-xs text-gray-700">
+                        <div>
+                          <div className="font-medium text-gray-500">Name</div>
+                          <div>{hospital.name}</div>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-500">
+                            Authority
+                          </div>
+                          <div className="font-mono break-all text-gray-600">
+                            {hospital.authority}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="font-medium text-gray-500">
+                            Hospital PDA
+                          </div>
+                          <div className="font-mono break-all text-gray-600">
+                            {hospital.pubkey}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-muted-foreground">
-                    <b>Name:</b> {hospital.name}
-                  </div>
-                  <div className="text-muted-foreground font-mono text-xs">
-                    <b>PDA:</b> {hospital.pubkey}
-                  </div>
-                  <div className="text-muted-foreground font-mono text-xs">
-                    <b>Auth:</b> {hospital.authority}
-                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold">2. Manage Access</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Select the permissions you want to grant or revoke.
-                  </p>
-                  <div className="flex flex-wrap gap-4 items-center text-sm">
-                    {renderableScopeOptions.map(
-                      (
-                        { label, bit } // Use filtered scopes
-                      ) => (
-                        <div key={bit} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`scope-${bit}`}
-                            checked={!!desired[bit]}
-                            onCheckedChange={() => flip(bit)}
-                            disabled={!canAct || !grantee}
-                          />
-                          <Label
-                            htmlFor={`scope-${bit}`}
-                            className="flex flex-col gap-1"
-                          >
-                            {label}
-                            <span className="text-xs text-muted-foreground">
-                              {current[bit]
-                                ? "(current: ON)"
-                                : "(current: off)"}
-                            </span>
-                          </Label>
-                        </div>
-                      )
-                    )}
+
+                {/* ✅ Manage Access Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold">Manage Access</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Direct permission actions for this hospital.
+                    </p>
                   </div>
-                  <div className="flex gap-3 pt-4">
-                    <Button onClick={save} disabled={!canAct || !grantee}>
-                      Save Access
+
+                  <div className="flex flex-wrap gap-3">
+                    {/* --- Grant Write Button --- */}
+                    <Button
+                      onClick={async () => {
+                        try {
+                          // If both active → revoke read, keep write
+                          if (current[1] && current[2]) {
+                            await revokeOne(1);
+                            await upsertOne(2);
+                          }
+                          // If only READ active → revoke read, grant write
+                          else if (current[1] && !current[2]) {
+                            await revokeOne(1);
+                            await upsertOne(2);
+                          }
+                          // Otherwise → just grant write
+                          else if (!current[2]) {
+                            await upsertOne(2);
+                          }
+                          await loadGrants();
+                        } catch (e: any) {
+                          setErr(e?.message ?? String(e));
+                        }
+                      }}
+                      disabled={!canAct || !grantee}
+                      className="font-medium bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {current[1] && current[2]
+                        ? "Revoke Read → Grant Write"
+                        : current[1] && !current[2]
+                        ? "Revoke Read → Grant Write"
+                        : "Grant Write"}
+                    </Button>
+
+                    {/* --- Grant Read Button --- */}
+                    <Button
+                      onClick={async () => {
+                        try {
+                          // If both active → revoke write, keep read
+                          if (current[1] && current[2]) {
+                            await revokeOne(2);
+                            await upsertOne(1);
+                          }
+                          // If only WRITE active → revoke write, grant read
+                          else if (current[2] && !current[1]) {
+                            await revokeOne(2);
+                            await upsertOne(1);
+                          }
+                          // Otherwise → just grant read
+                          else if (!current[1]) {
+                            await upsertOne(1);
+                          }
+                          await loadGrants();
+                        } catch (e: any) {
+                          setErr(e?.message ?? String(e));
+                        }
+                      }}
+                      disabled={!canAct || !grantee}
+                      className="font-medium bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {current[1] && current[2]
+                        ? "Revoke Write → Grant Read"
+                        : current[2] && !current[1]
+                        ? "Revoke Write → Grant Read"
+                        : "Grant Read"}
+                    </Button>
+
+                    {/* --- Grant All Button --- */}
+                    <Button
+                      onClick={async () => {
+                        try {
+                          // If both active → revoke all
+                          if (current[1] && current[2]) {
+                            await revokeOne(1);
+                            await revokeOne(2);
+                          } else {
+                            if (!current[1]) await upsertOne(1);
+                            if (!current[2]) await upsertOne(2);
+                          }
+                          await loadGrants();
+                        } catch (e: any) {
+                          setErr(e?.message ?? String(e));
+                        }
+                      }}
+                      disabled={!canAct || !grantee}
+                      className="font-medium bg-green-700 hover:bg-green-800 text-white"
+                    >
+                      {current[1] && current[2]
+                        ? "Revoke All"
+                        : "Grant All (Read + Write)"}
                     </Button>
                   </div>
                 </div>
               </main>
             ) : (
-              <div className="text-yellow-600">
-                Hospital not found for this authority. You can view existing
-                grants, but new grants will be blocked.
+              <div className="text-yellow-700 bg-yellow-50 border border-yellow-200 p-4 rounded-md text-sm">
+                <b>Warning:</b> Hospital not found for this authority. You can
+                still view existing grants, but new grants cannot be issued.
               </div>
             )}
-          </div>
+          </>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-gray-500 italic">
             Search for a hospital to manage its access.
           </p>
         )}

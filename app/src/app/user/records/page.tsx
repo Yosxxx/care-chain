@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import * as anchor from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
+import sodium from "libsodium-wrappers";
+import { useProgram } from "@/hooks/useProgram";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
+import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { FilterButton } from "@/components/filter-button";
-import { Button } from "@/components/ui/button";
 import {
   Pagination,
   PaginationContent,
@@ -17,187 +24,251 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Copy, SquareArrowOutUpRight } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+
+const WalletMultiButton = dynamic(
+  async () =>
+    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
+
+type Rec = {
+  seq: number;
+  pda: string;
+  cidEnc: string;
+  metaCid: string;
+  hospital: string;
+  sizeBytes: number;
+  createdAt: string;
+  hospital_id: string;
+  hospital_name: string;
+  doctor_name: string;
+  doctor_id: string;
+  diagnosis: string;
+  keywords: string;
+  description: string;
+  txSignature?: string;
+};
+
+const pinataGateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY?.trim();
+const ipfsGateway = (cid: string) =>
+  pinataGateway
+    ? `${
+        pinataGateway.startsWith("http")
+          ? pinataGateway
+          : `https://${pinataGateway}`
+      }/ipfs/${cid}`
+    : `https://ipfs.io/ipfs/${cid}`;
 
 export default function Page() {
-  // --- Expanded Mock Data (10 items) ---
-  const mockRecords = [
-    {
-      id: 1,
-      title: "Annual Checkup",
-      keywords: "Checkup, BP, Sugar",
-      hospital_pubkey: "HOSPITAL_ABC",
-      hospital_name: "Medika Central",
-      doctor_id: "DOC123",
-      doctor_name: "Dr. Albert",
-      transaction_id: "TXN001",
-      date: "2025-10-02",
-      type: "General",
-    },
-    {
-      id: 2,
-      title: "Dental Consultation",
-      keywords: "Cavity, Cleaning",
-      hospital_pubkey: "HOSPITAL_DEF",
-      hospital_name: "SmileCare Dental",
-      doctor_id: "DOC456",
-      doctor_name: "Dr. Benedict",
-      transaction_id: "TXN002",
-      date: "2025-08-14",
-      type: "Dental",
-    },
-    {
-      id: 3,
-      title: "Eye Examination",
-      keywords: "Vision, Glasses",
-      hospital_pubkey: "HOSPITAL_GHI",
-      hospital_name: "VisionPlus Eye Center",
-      doctor_id: "DOC789",
-      doctor_name: "Dr. Clara",
-      transaction_id: "TXN003",
-      date: "2025-09-21",
-      type: "Ophthalmology",
-    },
-    {
-      id: 4,
-      title: "Blood Test",
-      keywords: "Hemoglobin, Platelets",
-      hospital_pubkey: "HOSPITAL_JKL",
-      hospital_name: "HealthFirst Labs",
-      doctor_id: "DOC321",
-      doctor_name: "Dr. David",
-      transaction_id: "TXN004",
-      date: "2025-07-10",
-      type: "Laboratory",
-    },
-    {
-      id: 5,
-      title: "Cardiac Screening",
-      keywords: "ECG, Blood Pressure",
-      hospital_pubkey: "HOSPITAL_MNO",
-      hospital_name: "HeartCare Hospital",
-      doctor_id: "DOC654",
-      doctor_name: "Dr. Elisa",
-      transaction_id: "TXN005",
-      date: "2025-09-05",
-      type: "Cardiology",
-    },
-    {
-      id: 6,
-      title: "Allergy Test",
-      keywords: "Skin, Reaction",
-      hospital_pubkey: "HOSPITAL_PQR",
-      hospital_name: "AllerFree Clinic",
-      doctor_id: "DOC222",
-      doctor_name: "Dr. Frank",
-      transaction_id: "TXN006",
-      date: "2025-06-20",
-      type: "Immunology",
-    },
-    {
-      id: 7,
-      title: "X-Ray Scan",
-      keywords: "Chest, Bones",
-      hospital_pubkey: "HOSPITAL_STU",
-      hospital_name: "Radiant Imaging",
-      doctor_id: "DOC333",
-      doctor_name: "Dr. Grace",
-      transaction_id: "TXN007",
-      date: "2025-08-25",
-      type: "Radiology",
-    },
-    {
-      id: 8,
-      title: "Ultrasound Examination",
-      keywords: "Abdomen, Pregnancy",
-      hospital_pubkey: "HOSPITAL_VWX",
-      hospital_name: "EchoWave Diagnostics",
-      doctor_id: "DOC444",
-      doctor_name: "Dr. Henry",
-      transaction_id: "TXN008",
-      date: "2025-07-28",
-      type: "Imaging",
-    },
-    {
-      id: 9,
-      title: "Physiotherapy Session",
-      keywords: "Back Pain, Recovery",
-      hospital_pubkey: "HOSPITAL_YZA",
-      hospital_name: "MoveWell Center",
-      doctor_id: "DOC555",
-      doctor_name: "Dr. Irene",
-      transaction_id: "TXN009",
-      date: "2025-09-18",
-      type: "Rehabilitation",
-    },
-    {
-      id: 10,
-      title: "Vaccination",
-      keywords: "COVID-19 Booster",
-      hospital_pubkey: "HOSPITAL_BCD",
-      hospital_name: "CareVax Station",
-      doctor_id: "DOC666",
-      doctor_name: "Dr. James",
-      transaction_id: "TXN010",
-      date: "2025-05-05",
-      type: "Preventive",
-    },
-  ];
+  const { publicKey } = useWallet();
+  const { program, programId, ready } = useProgram();
 
-  // --- States ---
+  const [records, setRecords] = useState<Rec[]>([]);
+  const [patientOk, setPatientOk] = useState<boolean | null>(null);
+  const [err, setErr] = useState("");
+
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const perPage = 10;
+  const totalPages = Math.ceil(records.length / perPage);
 
-  const perPage = 5;
-  const totalPages = Math.ceil(mockRecords.length / perPage);
+  // ================== FETCH ON-CHAIN RECORDS ==================
+  useEffect(() => {
+    (async () => {
+      setErr("");
+      setRecords([]);
+      setPatientOk(null);
 
-  // --- Filtering + Sorting Logic ---
-  const filteredRecords = mockRecords.filter((rec) =>
-    rec.title.toLowerCase().includes(search.toLowerCase())
-  );
+      if (!ready || !program || !publicKey) return;
 
-  if (filterMode === "doctor") {
-    filteredRecords.sort((a, b) => a.doctor_name.localeCompare(b.doctor_name));
-  } else if (filterMode === "hospital") {
-    filteredRecords.sort((a, b) =>
-      a.hospital_name.localeCompare(b.hospital_name)
+      try {
+        const patientPda = findPatientPda(programId, publicKey);
+        // @ts-expect-error anchor typing
+        const pAcc = await program.account.patient.fetchNullable(patientPda);
+        if (!pAcc) {
+          setPatientOk(false);
+          return;
+        }
+        setPatientOk(true);
+
+        // get seq
+        const seqPda = findPatientSeqPda(programId, patientPda);
+        // @ts-expect-error
+        const seqAcc = await (program.account as any).patientSeq.fetch(seqPda);
+        const total = Number(seqAcc.value);
+
+        const out: Rec[] = [];
+        for (let i = 0; i < total; i++) {
+          const recordPda = PublicKey.findProgramAddressSync(
+            [
+              Buffer.from("record"),
+              patientPda.toBuffer(),
+              new anchor.BN(i).toArrayLike(Buffer, "le", 8),
+            ],
+            programId
+          )[0];
+
+          // @ts-expect-error Anchor typing
+          const rec = await (program.account as any).record.fetch(recordPda);
+
+          out.push({
+            seq: i,
+            pda: recordPda.toBase58(),
+            cidEnc: rec.cidEnc,
+            metaCid: rec.metaCid,
+            hospital: rec.hospital.toBase58(),
+            sizeBytes: Number(rec.sizeBytes),
+            createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
+            hospital_id: rec.hospitalId,
+            hospital_name: rec.hospitalName,
+            doctor_name: rec.doctorName,
+            doctor_id: rec.doctorId,
+            diagnosis: rec.diagnosis,
+            keywords: rec.keywords,
+            description: rec.description,
+            txSignature: rec.txSignature ?? "",
+          });
+        }
+
+        setRecords(out.reverse());
+      } catch (e: any) {
+        setErr(e?.message ?? String(e));
+      }
+    })();
+  }, [ready, program, programId.toBase58(), publicKey?.toBase58()]);
+
+  // ================== FILTERING + SORTING ==================
+  const filteredRecords = useMemo(() => {
+    let filtered = records.filter((r) =>
+      (r.diagnosis + r.keywords + r.description)
+        .toLowerCase()
+        .includes(search.toLowerCase())
     );
-  } else if (filterMode === "dateAsc") {
-    filteredRecords.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-  } else if (filterMode === "dateDesc") {
-    filteredRecords.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+
+    if (filterMode === "doctor")
+      filtered.sort((a, b) => a.doctor_name.localeCompare(b.doctor_name));
+    else if (filterMode === "hospital")
+      filtered.sort((a, b) => a.hospital_name.localeCompare(b.hospital_name));
+    else if (filterMode === "dateAsc")
+      filtered.sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    else if (filterMode === "dateDesc")
+      filtered.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+    return filtered;
+  }, [records, search, filterMode]);
+
+  const startIndex = (page - 1) * perPage;
+  const paginated = filteredRecords.slice(startIndex, startIndex + perPage);
+
+  // ================== DECRYPT + DOWNLOAD ==================
+  async function handleDecryptAndDownload(rec: Rec) {
+    try {
+      await sodium.ready;
+      const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
+
+      const unwrap = await (
+        await fetch("/api/unwrap-dek", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            wrapped_dek_b64: meta.wrapped_dek,
+            recordId: meta.aad,
+          }),
+        })
+      ).json();
+
+      if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
+      const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
+
+      const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
+      const aad = new TextEncoder().encode(meta.aad || "");
+      const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
+
+      const res = await fetch(ipfsGateway(rec.cidEnc));
+      const encBuf = new Uint8Array(await res.arrayBuffer());
+      const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+
+      let off = 0;
+      let idx = 0;
+      const chunks: Uint8Array[] = [];
+
+      while (off < encBuf.length) {
+        const clen = Math.min(chunkSize + TAG, encBuf.length - off);
+        const cipher = encBuf.subarray(off, off + clen);
+        off += clen;
+        const nonce = new Uint8Array(nonceBase);
+        nonce[nonce.length - 4] = idx & 0xff;
+        nonce[nonce.length - 3] = (idx >> 8) & 0xff;
+        nonce[nonce.length - 2] = (idx >> 16) & 0xff;
+        nonce[nonce.length - 1] = (idx >> 24) & 0xff;
+        idx++;
+
+        const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+          null,
+          cipher,
+          aad,
+          nonce,
+          DEK
+        );
+        chunks.push(plain);
+      }
+
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const merged = new Uint8Array(total);
+      let p = 0;
+      for (const c of chunks) {
+        merged.set(c, p);
+        p += c.length;
+      }
+
+      const contentType =
+        meta.original_content_type || "application/octet-stream";
+      const blob = new Blob([merged], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = meta.original_name || `record-${rec.seq}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message ?? String(e));
+    }
   }
 
-  // --- Pagination Logic ---
-  const startIndex = (page - 1) * perPage;
-  const paginatedRecords = filteredRecords.slice(
-    startIndex,
-    startIndex + perPage
-  );
-
-  const handleNext = () => {
-    if (page < totalPages) setPage(page + 1);
-  };
-
-  const handlePrev = () => {
-    if (page > 1) setPage(page - 1);
-  };
-
-  const handlePageClick = (pageNum: number) => setPage(pageNum);
-
+  // ================== UI ==================
   return (
     <main className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Records</h1>
-        <p>View your medical records</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">My Records</h1>
+          <p className="text-gray-500">
+            View and download your medical records
+          </p>
+        </div>
       </div>
 
-      {/* Search and Filter */}
+      {!publicKey && (
+        <div className="text-yellow-600 border border-yellow-600/40 bg-yellow-600/10 p-2 rounded">
+          Connect wallet to load your records.
+        </div>
+      )}
+      {publicKey && patientOk === false && (
+        <div className="text-red-600 border border-red-600/40 bg-red-600/10 p-2 rounded">
+          This wallet is not registered as a patient yet.
+        </div>
+      )}
+
+      {err && <p className="text-red-600 text-sm">{err}</p>}
+
       <div className="flex gap-2">
         <Input
           placeholder="Search records..."
@@ -210,8 +281,8 @@ export default function Page() {
         <FilterButton
           options={[
             { label: "Default", value: null },
-            { label: "Doctor Name (A-Z)", value: "doctor" },
-            { label: "Hospital Name (A-Z)", value: "hospital" },
+            { label: "Doctor (A-Z)", value: "doctor" },
+            { label: "Hospital (A-Z)", value: "hospital" },
             { label: "Date ↑", value: "dateAsc" },
             { label: "Date ↓", value: "dateDesc" },
           ]}
@@ -223,89 +294,155 @@ export default function Page() {
         />
       </div>
 
-      {/* Records */}
+      {/* Record Cards */}
       <div className="flex flex-col gap-y-4">
-        {paginatedRecords.map((rec) => (
-          <Collapsible key={rec.id} className="border p-3 rounded-md">
+        {paginated.map((rec) => (
+          <Collapsible key={rec.pda} className="border p-4 rounded">
             <CollapsibleTrigger className="w-full flex justify-between text-left">
               <div>
-                <div className="font-semibold">{rec.title}</div>
-                <div className="text-sm text-muted-foreground">
-                  {rec.keywords}
+                <div className="font-semibold text-lg">
+                  {rec.diagnosis || "Untitled Diagnosis"}
                 </div>
+                {rec.keywords && (
+                  <div className="text-sm text-gray-500">{rec.keywords}</div>
+                )}
               </div>
-              <div className="text-sm">{rec.date}</div>
+              <div className="text-sm text-gray-500">{rec.createdAt}</div>
             </CollapsibleTrigger>
 
-            <CollapsibleContent className="mt-3 space-y-1">
-              {[
-                { label: "Doctor", value: rec.doctor_name },
-                { label: "Hospital", value: rec.hospital_name },
-                { label: "Hospital Pubkey", value: rec.hospital_pubkey },
-                { label: "Doctor ID", value: rec.doctor_id },
-                { label: "Transaction ID", value: rec.transaction_id },
-              ].map((item, i) => (
-                <div key={i}>
-                  <div>{item.label}</div>
-                  <div className="flex gap-x-2 items-center">
-                    <div className="p-2 border rounded font-mono flex-1">
-                      {item.value}
-                    </div>
-                    <div className="space-x-2">
-                      <Button size="icon">
-                        <Copy />
-                      </Button>
-                      <Button size="icon">
-                        <SquareArrowOutUpRight />
-                      </Button>
-                    </div>
+            <CollapsibleContent className="mt-4 space-y-4 text-sm">
+              {/* Two-row metadata layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Hospital ID
+                  </div>
+                  <div className="font-mono border p-1 rounded">
+                    {rec.hospital_id || "N/A"}
                   </div>
                 </div>
-              ))}
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Doctor ID
+                  </div>
+                  <div className="font-mono border p-1 rounded">
+                    {rec.doctor_id || "N/A"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Hospital Name
+                  </div>
+                  <div className="font-mono border p-1 rounded">
+                    {rec.hospital_name || "N/A"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Doctor Name
+                  </div>
+                  <div className="font-mono border p-1 rounded">
+                    {rec.doctor_name || "N/A"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Pubkey Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Hospital Pubkey
+                  </div>
+                  <div className="font-mono border p-1 rounded break-all">
+                    {rec.hospital}
+                  </div>
+                </div>
+                <div />
+              </div>
+
+              <Separator className="my-2" />
+
+              {/* Description */}
+              {rec.description && (
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Description
+                  </div>
+                  <p className="whitespace-pre-wrap border p-2 rounded">
+                    {rec.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Solscan Link */}
+              {rec.txSignature && (
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">
+                    Transaction Signature
+                  </div>
+                  <a
+                    href={`https://solscan.io/tx/${rec.txSignature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                  >
+                    View on Solscan <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              )}
+
+              {/* Action */}
+              <div className="pt-3 border-t mt-3">
+                <Button onClick={() => handleDecryptAndDownload(rec)}>
+                  Download Decrypted File
+                </Button>
+              </div>
             </CollapsibleContent>
           </Collapsible>
         ))}
       </div>
 
-      {/* Pagination */}
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                handlePrev();
-              }}
-            />
-          </PaginationItem>
-
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <PaginationItem key={i}>
-              <PaginationLink
+      {records.length > perPage && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
                 href="#"
-                isActive={page === i + 1}
                 onClick={(e) => {
                   e.preventDefault();
-                  handlePageClick(i + 1);
+                  if (page > 1) setPage(page - 1);
                 }}
-              >
-                {i + 1}
-              </PaginationLink>
+              />
             </PaginationItem>
-          ))}
 
-          <PaginationItem>
-            <PaginationNext
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                handleNext();
-              }}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+            {Array.from({ length: totalPages }).map((_, i) => (
+              <PaginationItem key={i}>
+                <PaginationLink
+                  href="#"
+                  isActive={page === i + 1}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPage(i + 1);
+                  }}
+                >
+                  {i + 1}
+                </PaginationLink>
+              </PaginationItem>
+            ))}
+
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (page < totalPages) setPage(page + 1);
+                }}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
     </main>
   );
 }
