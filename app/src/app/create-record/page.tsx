@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
-import { useConnection, useAnchorWallet } from "@solana/wallet-adapter-react";
+import { useConnection, useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  type TransactionInstruction,
+} from "@solana/web3.js";
 import idl from "../../../anchor.json";
 import {
   findConfigPda,
@@ -22,9 +27,12 @@ const WalletMultiButton = dynamic(
 
 export default function CreateRecordPage() {
   const { connection } = useConnection();
-  const wallet = useAnchorWallet();
 
-  const [patientStr, setPatientStr] = useState(""); // patient Solana address (base58)
+  // Anchor wallet for provider; useWallet for signTransaction access.
+  const anchorWallet = useAnchorWallet();
+  const { signTransaction: waSignTx } = useWallet();
+
+  const [patientStr, setPatientStr] = useState(""); // base58 Solana address of patient
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState({
     hospital_id: "",
@@ -36,12 +44,17 @@ export default function CreateRecordPage() {
     description: "",
   });
   const [status, setStatus] = useState("");
+  const [coSignBase64, setCoSignBase64] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
 
-  // live checks
+  // Keep the built instruction so we can refresh with a new blockhash
+  const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
+
+  // Live checks
   const [hospitalOk, setHospitalOk] = useState<boolean | null>(null);
   const [patientOk, setPatientOk] = useState<boolean | null>(null);
   const [grantOk, setGrantOk] = useState<boolean | null>(null);
-  const [grantErr, setGrantErr] = useState<string>("");
+  const [grantErr, setGrantErr] = useState("");
 
   const programId = useMemo(
     () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
@@ -50,10 +63,10 @@ export default function CreateRecordPage() {
 
   const provider = useMemo(
     () =>
-      wallet
-        ? new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" })
+      anchorWallet
+        ? new anchor.AnchorProvider(connection, anchorWallet, { commitment: "confirmed" })
         : null,
-    [connection, wallet]
+    [connection, anchorWallet]
   );
 
   const program = useMemo(
@@ -62,18 +75,25 @@ export default function CreateRecordPage() {
   );
 
   const patientPk = useMemo(() => {
-    try { return new PublicKey(patientStr.trim()); } catch { return null; }
+    try {
+      return new PublicKey(patientStr.trim());
+    } catch {
+      return null;
+    }
   }, [patientStr]);
 
-  const handleChange = (key: string, val: string) =>
-    setMeta((m) => ({ ...m, [key]: val }));
+  const handleChange = (k: string, v: string) =>
+    setMeta((m) => ({ ...m, [k]: v }));
 
   // ---------- helpers ----------
   const u8ToB64 = (u8: Uint8Array) => Buffer.from(u8).toString("base64");
   const hexToU8 = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
   const b64ToU8 = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
 
-  async function encUpload(patientPk_b64: string, hospitalPk_b64: string): Promise<{
+  async function encUpload(
+    patientPk_b64: string,
+    hospitalPk_b64: string
+  ): Promise<{
     cidEnc: string;
     metaCid: string;
     sizeBytes: number;
@@ -84,12 +104,11 @@ export default function CreateRecordPage() {
     kmsRef: string;
   }> {
     if (!file) throw new Error("Choose a file first");
-
     const fd = new FormData();
     fd.append("file", file);
     fd.append("contentType", file.type || "application/octet-stream");
-    fd.append("patientPk_b64", patientPk_b64);    // Ed25519 pubkey, base64
-    fd.append("rsCreatorPk_b64", hospitalPk_b64); // Ed25519 pubkey, base64
+    fd.append("patientPk_b64", patientPk_b64);
+    fd.append("rsCreatorPk_b64", hospitalPk_b64);
 
     const r = await fetch("/create-record/enc-upload", { method: "POST", body: fd });
     const text = await r.text();
@@ -100,12 +119,12 @@ export default function CreateRecordPage() {
   // ---------- live checkers ----------
   useEffect(() => {
     (async () => {
-      if (!program || !wallet?.publicKey) {
+      if (!program || !anchorWallet?.publicKey) {
         setHospitalOk(null);
         return;
       }
       try {
-        const hospitalPda = findHospitalPda(program.programId, wallet.publicKey);
+        const hospitalPda = findHospitalPda(program.programId, anchorWallet.publicKey);
         // @ts-expect-error anchor typing
         const hAcc = await program.account.hospital.fetchNullable(hospitalPda);
         setHospitalOk(!!hAcc);
@@ -113,7 +132,7 @@ export default function CreateRecordPage() {
         setHospitalOk(false);
       }
     })();
-  }, [program, wallet?.publicKey]);
+  }, [program, anchorWallet?.publicKey]);
 
   useEffect(() => {
     (async () => {
@@ -135,30 +154,48 @@ export default function CreateRecordPage() {
   useEffect(() => {
     (async () => {
       setGrantErr("");
-      if (!program || !wallet?.publicKey || !patientPk) {
+      if (!program || !anchorWallet?.publicKey || !patientPk) {
         setGrantOk(null);
         return;
       }
       try {
         const patientPda = findPatientPda(program.programId, patientPk);
-        const grantWritePda = findGrantPda(program.programId, patientPda, wallet.publicKey, 2);
+        const grantWritePda = findGrantPda(program.programId, patientPda, anchorWallet.publicKey, 2);
         // @ts-expect-error anchor typing
         const gAcc = await program.account.grant.fetchNullable(grantWritePda);
-        if (!gAcc) { setGrantOk(false); setGrantErr("Grant not found"); return; }
-        if (gAcc.revoked) { setGrantOk(false); setGrantErr("Grant revoked"); return; }
+        if (!gAcc) {
+          setGrantOk(false);
+          setGrantErr("Grant not found");
+          return;
+        }
+        if (gAcc.revoked) {
+          setGrantOk(false);
+          setGrantErr("Grant revoked");
+          return;
+        }
         setGrantOk(true);
       } catch (e: any) {
         setGrantOk(false);
         setGrantErr(e?.message ?? "Grant check failed");
       }
     })();
-  }, [program, wallet?.publicKey, patientPk?.toBase58()]);
+  }, [program, anchorWallet?.publicKey, patientPk?.toBase58()]);
+
+  // Build shareable URL when base64 changes
+  useEffect(() => {
+    if (coSignBase64 && typeof window !== "undefined") {
+      setShareUrl(`${window.location.origin}/co-sign?tx=${encodeURIComponent(coSignBase64)}`);
+    } else {
+      setShareUrl("");
+    }
+  }, [coSignBase64]);
 
   // ---------- main create ----------
   const createRecord = async () => {
+    setCoSignBase64("");
     try {
       setStatus("Checking preconditions...");
-      if (!program || !wallet || !patientPk) throw new Error("Program, wallet or patient missing");
+      if (!program || !anchorWallet || !patientPk) throw new Error("Program, wallet or patient missing");
       if (!hospitalOk) throw new Error("Hospital not registered for this wallet.");
       if (!patientOk) throw new Error("Patient not registered. Ask the patient to upsert first.");
       if (!grantOk) throw new Error(grantErr || "Write access not granted by this patient.");
@@ -166,12 +203,12 @@ export default function CreateRecordPage() {
       const configPda = findConfigPda(programId);
       const patientPda = findPatientPda(programId, patientPk);
       const patientSeqPda = findPatientSeqPda(programId, patientPda);
-      const hospitalPda = findHospitalPda(programId, wallet.publicKey);
-      const grantWritePda = findGrantPda(programId, patientPda, wallet.publicKey, 2);
+      const hospitalPda = findHospitalPda(programId, anchorWallet.publicKey);
+      const grantWritePda = findGrantPda(programId, patientPda, anchorWallet.publicKey, 2);
 
-      // Derive Ed25519 public keys (base64) from Solana addresses
-      const patientPk_b64 = u8ToB64(bs58.decode(patientStr.trim()));      // 32 bytes
-      const hospitalPk_b64 = u8ToB64(wallet.publicKey.toBytes());         // 32 bytes
+      // Base64 public keys for the upload service
+      const patientPk_b64 = u8ToB64(bs58.decode(patientStr.trim()));
+      const hospitalPk_b64 = u8ToB64(anchorWallet.publicKey.toBytes());
 
       setStatus("Encrypting & uploading...");
       const {
@@ -185,7 +222,7 @@ export default function CreateRecordPage() {
         kmsRef,
       } = await encUpload(patientPk_b64, hospitalPk_b64);
 
-      setStatus("Deriving PDAs & sequence...");
+      setStatus("Deriving sequence...");
       // @ts-expect-error anchor typing
       const patientSeq = await program.account.patientSeq.fetch(patientSeqPda);
       const seq = new anchor.BN(patientSeq.value);
@@ -197,8 +234,8 @@ export default function CreateRecordPage() {
       const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
       const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
 
-      setStatus("Submitting transaction...");
-      const tx = await program.methods
+      // Build Anchor method and obtain the raw instruction
+      const method = program.methods
         .createRecord(
           seq,
           cidEnc,
@@ -213,22 +250,20 @@ export default function CreateRecordPage() {
           { kms: {} }, // edek_patient_algo
           { kms: {} }, // edek_hospital_algo
           kmsRef,
-          
           1, // enc_version
           { xChaCha20: {} }, // enc_algo
-
-          // --- START: NEW ON-CHAIN ATTRIBUTES ---
+          // extra metadata
           meta.hospital_id,
           meta.hospital_name,
           meta.doctor_name,
           meta.doctor_id,
           meta.diagnosis,
           meta.keywords,
-          meta.description // <-- This is the new description field
-          // --- END: NEW ON-CHAIN ATTRIBUTES ---
+          meta.description
         )
         .accounts({
-          uploader: wallet.publicKey,
+          uploader: anchorWallet.publicKey, // hospital signer
+          payer: patientPk,                 // patient co-signer (rent payer)
           config: configPda,
           patient: patientPda,
           patientSeq: patientSeqPda,
@@ -239,23 +274,92 @@ export default function CreateRecordPage() {
             programId
           )[0],
           systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+        });
 
-      setStatus(`✅ Tx: ${tx}`);
+      // If both are the same wallet (dev), just send normally
+      if (anchorWallet.publicKey.equals(patientPk)) {
+        setStatus("Submitting (single-signer test path)...");
+        const sig = await method.rpc();
+        setStatus(`✅ Tx: ${sig}`);
+        return;
+      }
+
+      // ---------- Multi-sign path (Hospital pays network fee) ----------
+      setStatus("Building instruction...");
+      const ix = await method.instruction();
+      setLastIx(ix); // save for refresh
+
+      setStatus("Compiling legacy message (feePayer = hospital)...");
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+
+      const ltx = new Transaction({
+        feePayer: anchorWallet.publicKey,   // hospital pays fee
+        recentBlockhash: blockhash,
+      }).add(ix);
+
+      if (!waSignTx) {
+        throw new Error(
+          "This wallet cannot sign transactions. Use Phantom/Backpack/Solflare or enable UnsafeBurnerWalletAdapter (dev only)."
+        );
+      }
+
+      setStatus("Signing as hospital (legacy tx)...");
+      const signedByHospital = await waSignTx(ltx);
+
+      // Serialize WITHOUT requiring all signatures (patient still missing)
+      const b64 = Buffer.from(
+        signedByHospital.serialize({ requireAllSignatures: false })
+      ).toString("base64");
+
+      setCoSignBase64(b64);
+      setStatus("Waiting for patient co-sign. Share the base64 or the link below with the patient.");
+      // -----------------------------------------------------------------
     } catch (e: any) {
-      setStatus(`❌ ${e.message ?? String(e)}`);
+      const msg = e?.message || e?.toString?.() || "Unknown error";
+      setStatus(`❌ ${msg}`);
     }
   };
 
+  // Rebuild & re-sign wit a fresh blockhash (when patient reports "Blockhash not found")
+  const refreshCosignTx = async () => {
+    try {
+      if (!anchorWallet || !lastIx) return;
+      setStatus("Refreshihng co-sign transaction...");
+      const { blockhash } = await connection.getLatestBlockhash("finalized");
+      const ltx = new Transaction({
+        feePayer: anchorWallet.publicKey,
+        recentBlockhash: blockhash,
+      }).add(lastIx);
+
+      if (!waSignTx) throw new Error("Wallet cannot sign transactions.");
+      const signedByHospital = await waSignTx(ltx);
+
+      const b64 = Buffer.from(
+        signedByHospital.serialize({ requireAllSignatures: false })
+      ).toString("base64");
+
+      setCoSignBase64(b64);
+      setStatus("Share the new link/base64 with the patient.");
+    } catch (e: any) {
+      setStatus(`❌ ${e?.message || String(e)}`);
+    }
+  };
+
+  // Keep the gate light; createRecord() performs full checks anyway
   const readyToSubmit =
     !!program &&
-    !!wallet?.publicKey &&
+    !!anchorWallet?.publicKey &&
     !!patientPk &&
-    !!file &&
-    hospitalOk === true &&
-    patientOk === true &&
-    grantOk === true;
+    !!file;
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("✅ Copied to clipboard.");
+    } catch {
+      setStatus("⚠️ Copy failed. Select & copy manually.");
+    }
+  };
 
   return (
     <main className="max-w-2xl mx-auto p-6 space-y-4">
@@ -273,7 +377,7 @@ export default function CreateRecordPage() {
         )}
         {patientOk === false && (
           <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
-            Patient not registered. Ask them to upsert on the Patients page.
+            Patient not registered.
           </div>
         )}
         {grantOk === false && (
@@ -288,10 +392,10 @@ export default function CreateRecordPage() {
         )}
       </div>
 
-      {/* On-chain patient identity (for PDA derivations) */}
+      {/* On-chain patient identity (for PDAs) */}
       <input
         className="w-full border rounded p-2 font-mono text-sm"
-        placeholder="Patient Pubkey (base58, Solana address)"
+        placeholder="Patient Pubkey (base58)"
         value={patientStr}
         onChange={(e) => setPatientStr(e.target.value)}
       />
@@ -323,6 +427,42 @@ export default function CreateRecordPage() {
       </button>
 
       {status && <p className="text-sm mt-2 whitespace-pre-wrap">{status}</p>}
+
+      {/* Multi-sign output for patient */}
+      {coSignBase64 && (
+        <div className="mt-4 space-y-2">
+          <label className="text-sm font-medium">
+            Base64 transaction (hospital-signed). Send to the patient to co-sign &amp; submit:
+          </label>
+          <textarea
+            readOnly
+            className="w-full border rounded p-2 text-xs font-mono h-40"
+            value={coSignBase64}
+          />
+          <div className="flex gap-2 items-center flex-wrap">
+            <button
+              onClick={() => copyToClipboard(coSignBase64)}
+              className="bg-gray-800 text-white px-3 py-2 rounded"
+            >
+              Copy
+            </button>
+            <button
+              onClick={refreshCosignTx}
+              className="bg-gray-700 text-white px-3 py-2 rounded"
+            >
+              Refresh co-sign TX
+            </button>
+            {shareUrl && (
+              <span className="text-xs break-all">
+                or share this link:&nbsp;
+                <a className="underline" href={shareUrl} target="_blank" rel="noreferrer">
+                  {shareUrl}
+                </a>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

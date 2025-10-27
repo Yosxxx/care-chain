@@ -92,6 +92,8 @@ pub enum RecordError {
     KeywordsTooLong,
     #[msg("Description too long")]
     DescriptionTooLong,
+    #[msg("Payer must be Patient")]
+    PayerMustBePatient,
 }
 
 #[error_code]

@@ -8,7 +8,7 @@ pub mod states;
 use instructions::*;
 use states::*;
 
-declare_id!("BLEw7o5excmgRLfLp24TdUgzYKkXL6s6oYxrG3SNvKxg");
+declare_id!("2HZmbrh7agvx2M2z7PjY8U97fpXGuVTouVeVJRvDTXnq");
 
 #[program]
 pub mod anchor {
@@ -27,31 +27,31 @@ pub mod anchor {
     }
 
     pub fn create_record(
-    ctx: Context<CreateRecord>,
-    seq: u64,
-    cid_enc: String,
-    meta_mime: String,
-    meta_cid: String,
-    size_bytes: u64,
-    blake2b_256: [u8; 32],
-    edek_root: Vec<u8>,
-    edek_for_patient: Vec<u8>,
-    edek_for_hospital: Vec<u8>,
-    edek_root_algo: WrapAlgo,
-    edek_patient_algo: WrapAlgo,
-    edek_hospital_algo: WrapAlgo,
-    kms_ref: String,
-    enc_version: u16,
-    enc_algo: EncAlgo,
-    // --- START: NEW ARGUMENTS ---
-    hospital_id: String,
-    hospital_name: String,
-    doctor_name: String,
-    doctor_id: String,
-    diagnosis: String,
-    keywords: String,
-    description: String,
-    // --- END: NEW ARGUMENTS ---
+        ctx: Context<CreateRecord>,
+        seq: u64,
+        cid_enc: String,
+        meta_mime: String,
+        meta_cid: String,
+        size_bytes: u64,
+        blake2b_256: [u8; 32],
+        edek_root: Vec<u8>,
+        edek_for_patient: Vec<u8>,
+        edek_for_hospital: Vec<u8>,
+        edek_root_algo: WrapAlgo,
+        edek_patient_algo: WrapAlgo,
+        edek_hospital_algo: WrapAlgo,
+        kms_ref: String,
+        enc_version: u16,
+        enc_algo: EncAlgo,
+        // --- START: NEW ARGUMENTS ---
+        hospital_id: String,
+        hospital_name: String,
+        doctor_name: String,
+        doctor_id: String,
+        diagnosis: String,
+        keywords: String,
+        description: String,
+        // --- END: NEW ARGUMENTS ---
     ) -> Result<()> {
         record_create(
             ctx,
