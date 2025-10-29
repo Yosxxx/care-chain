@@ -413,6 +413,158 @@
       ]
     },
     {
+      "name": "read_records",
+      "discriminator": [
+        108,
+        247,
+        96,
+        158,
+        174,
+        5,
+        60,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "reader",
+          "signer": true
+        },
+        {
+          "name": "patient",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hospital",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  111,
+                  115,
+                  112,
+                  105,
+                  116,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hospital.authority",
+                "account": "Hospital"
+              }
+            ]
+          }
+        },
+        {
+          "name": "patient_seq",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  101,
+                  113
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "grant_read"
+        },
+        {
+          "name": "record",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              },
+              {
+                "kind": "arg",
+                "path": "seq"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "seq",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "register_hospitals",
       "discriminator": [
         198,
@@ -866,6 +1018,19 @@
         104,
         225
       ]
+    },
+    {
+      "name": "RecordRead",
+      "discriminator": [
+        121,
+        247,
+        133,
+        128,
+        199,
+        34,
+        198,
+        82
+      ]
     }
   ],
   "errors": [
@@ -998,6 +1163,11 @@
       "code": 6025,
       "name": "PayerMustBePatient",
       "msg": "Payer must be Patient"
+    },
+    {
+      "code": 6026,
+      "name": "RecordMismatch",
+      "msg": "Record linkage mismatch"
     }
   ],
   "types": [
@@ -1575,6 +1745,34 @@
           {
             "name": "created_at",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecordRead",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "record",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "hospital",
+            "type": "pubkey"
+          },
+          {
+            "name": "reader",
+            "type": "pubkey"
+          },
+          {
+            "name": "seq",
+            "type": "u64"
           }
         ]
       }

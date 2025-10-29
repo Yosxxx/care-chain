@@ -52,6 +52,16 @@ pub struct RecordCreated {
 }
 
 #[event]
+pub struct RecordRead {
+    pub record: Pubkey,
+    pub patient: Pubkey,
+    pub hospital: Pubkey,
+    pub reader: Pubkey,
+    pub seq: u64,
+    // pub ts: i64,
+}
+
+#[event]
 pub struct GrantCreated {
     pub grant: Pubkey,
     pub patient: Pubkey,

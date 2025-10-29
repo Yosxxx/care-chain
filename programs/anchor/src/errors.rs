@@ -94,6 +94,8 @@ pub enum RecordError {
     DescriptionTooLong,
     #[msg("Payer must be Patient")]
     PayerMustBePatient,
+    #[msg("Record linkage mismatch")]
+    RecordMismatch,
 }
 
 #[error_code]

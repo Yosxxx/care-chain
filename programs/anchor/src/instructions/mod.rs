@@ -10,6 +10,9 @@ pub mod upsert_patient;
 pub use create_record::*;
 pub mod create_record;
 
+pub use read_records::*;
+pub mod read_records;
+
 pub use grant_access::*;
 pub mod grant_access;
 

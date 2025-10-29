@@ -82,6 +82,10 @@ pub mod anchor {
         )
     }
 
+    pub fn read_records(ctx: Context<ReadRecords>, seq: u64) -> Result<()> {
+        records_read(ctx, seq)
+    }
+
     pub fn upsert_patient(
         ctx: Context<UpsertPatient>,
         id_hash: [u8; 32],
