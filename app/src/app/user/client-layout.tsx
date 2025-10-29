@@ -2,7 +2,7 @@
 "use client";
 
 import AppSidebar from "@/components/app-sidebar";
-import { Building2, ClipboardList, FileText, Users } from "lucide-react";
+import { Building2, ClipboardList, FilePen, FileText } from "lucide-react";
 import Navbar from "@/components/navbar";
 import dynamic from "next/dynamic";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
@@ -15,6 +15,7 @@ import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
 import { MAX_DID_LEN } from "@/lib/constants";
 import { bytesToHex } from "@/lib/bytes";
 import { blake2b256 } from "@/lib/hash";
+
 const ID_NAMESPACE = "carechain:id";
 
 const SIDEBAR_ITEMS = [
@@ -28,15 +29,20 @@ const SIDEBAR_ITEMS = [
     href: "/user/records",
     icon: <FileText className="w-5 h-5" />,
   },
-  {
-    label: "Trustees",
-    href: "/user/trustees",
-    icon: <Users className="w-5 h-5" />,
-  },
+  // {
+  //   label: "Trustees",
+  //   href: "/user/trustees",
+  //   icon: <Users className="w-5 h-5" />,
+  // },
   {
     label: "Access",
     href: "/user/access",
     icon: <ClipboardList className="w-5 h-5" />,
+  },
+  {
+    label: "Co-Sign",
+    href: "/user/co-sign",
+    icon: <FilePen className="w-5 h-5" />,
   },
 ];
 
@@ -360,7 +366,7 @@ export default function ClientLayout({
     <main>
       <Navbar />
       <div className="grid grid-cols-12 min-w-[1400px] max-w-[1400px] mx-auto gap-x-5">
-        <div className="sticky top-[4rem] h-[calc(100vh_-_4rem)] max-h-screen col-span-3">
+        <div className="sticky top-[6rem] h-[calc(100vh_-_6rem)] max-h-screen col-span-3">
           <AppSidebar dynamicItems={SIDEBAR_ITEMS} isAdmin={false} />
         </div>
 

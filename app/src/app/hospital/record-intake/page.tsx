@@ -1,25 +1,26 @@
 "use client";
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, ChangeEvent, useMemo } from "react";
 import JSZip from "jszip";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Undo2 } from "lucide-react";
 import { GetHospitalData } from "@/action/GetHospitalData";
+import { QRCodeCanvas } from "qrcode.react";
+import { toast } from "sonner";
 
 // --- SOLANA IMPORTS ---
 import * as anchor from "@coral-xyz/anchor";
 import {
   useConnection,
   useAnchorWallet,
-  useWallet, // <-- ADDED
+  useWallet,
 } from "@solana/wallet-adapter-react";
 import {
   PublicKey,
   SystemProgram,
-  Transaction, // <-- ADDED
-  type TransactionInstruction, // <-- ADDED
+  Transaction,
+  type TransactionInstruction,
 } from "@solana/web3.js";
 import idl from "../../../../anchor.json";
 import {
@@ -31,6 +32,7 @@ import {
 } from "@/lib/pda";
 import bs58 from "bs58";
 import { Textarea } from "@/components/ui/textarea";
+import { StatusBanner } from "@/components/status-banner";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -57,6 +59,7 @@ export default function Page() {
   const [previews, setPreviews] = useState<string[]>([]);
   const [images, setImages] = useState<{ name: string; blob: Blob }[]>([]);
   const [hospitalData, setHospitalData] = useState<HospitalData | null>(null);
+  const [view, setView] = useState<"form" | "loading" | "qr">("form");
 
   // --- SOLANA STATE & HOOKS ---
   const { connection } = useConnection();
@@ -78,7 +81,8 @@ export default function Page() {
   // --- CO-SIGN STATE (COPIED) ---
   const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
   const [coSignBase64, setCoSignBase64] = useState("");
-  const [shareUrl, setShareUrl] = useState("");
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const programId = useMemo(
     () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
@@ -113,15 +117,6 @@ export default function Page() {
   const u8ToB64 = (u8: Uint8Array) => Buffer.from(u8).toString("base64");
   const hexToU8 = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
   const b64ToU8 = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus("✅ Copied to clipboard.");
-    } catch {
-      setStatus("⚠️ Copy failed. Select & copy manually.");
-    }
-  };
 
   // ==================== ENC UPLOAD (MODIFIED) ====================
   async function encUpload(
@@ -248,19 +243,6 @@ export default function Page() {
       }
     })();
   }, [program, wallet?.publicKey, patientPk?.toBase58()]);
-
-  // Build shareable URL when base64 changes
-  useEffect(() => {
-    if (coSignBase64 && typeof window !== "undefined") {
-      setShareUrl(
-        `${window.location.origin}/co-sign?tx=${encodeURIComponent(
-          coSignBase64
-        )}`
-      );
-    } else {
-      setShareUrl("");
-    }
-  }, [coSignBase64]);
 
   // ==================== FETCH HOSPITAL INFO ====================
   useEffect(() => {
@@ -403,7 +385,10 @@ export default function Page() {
 
   // ==================== MAIN SUBMIT (IMPLEMENTED) ====================
   const handleSubmitOnChain = async () => {
-    setCoSignBase64(""); // Clear previous tx
+    setCoSignBase64("");
+    setIsSubmitting(true);
+    setView("loading"); // 🔄 switch to spinner view immediately
+
     try {
       setStatus("Checking preconditions...");
       if (!program || !wallet || !patientPk || !record)
@@ -411,14 +396,13 @@ export default function Page() {
       if (!hospitalOk)
         throw new Error("Hospital not registered for this wallet.");
       if (!patientAccountOk)
-        throw new Error(
-          "Patient not registered. Ask the patient to upsert first."
-        );
+        throw new Error("Patient not registered. Ask them to upsert first.");
       if (!grantOk)
         throw new Error(
           grantErr || "Write access not granted by this patient."
         );
 
+      // --- existing logic (unchanged) ---
       const configPda = findConfigPda(programId);
       const patientPda = findPatientPda(programId, patientPk);
       const patientSeqPda = findPatientSeqPda(programId, patientPda);
@@ -430,11 +414,9 @@ export default function Page() {
         2
       );
 
-      // Base64 public keys for the upload service
       const patientPk_b64 = u8ToB64(bs58.decode(record.patient_pubkey.trim()));
       const hospitalPk_b64 = u8ToB64(wallet.publicKey.toBytes());
 
-      // --- GENERATE ZIP IN MEMORY ---
       setStatus("Zipping record...");
       const zip = new JSZip();
       zip.file("medical_record.json", JSON.stringify(record, null, 2));
@@ -443,7 +425,6 @@ export default function Page() {
       const finalZipFile = new File([zipBlob], zipName || "record.zip", {
         type: "application/zip",
       });
-      // --- END ZIP ---
 
       setStatus("Encrypting & uploading zip...");
       const {
@@ -469,7 +450,6 @@ export default function Page() {
       const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
       const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
 
-      setStatus("Building method...");
       const method = program.methods
         .createRecord(
           seq,
@@ -481,13 +461,12 @@ export default function Page() {
           edekRoot,
           edekForPatient,
           edekForHospital,
-          { kms: {} }, // edek_root_algo
-          { kms: {} }, // edek_patient_algo
-          { kms: {} }, // edek_hospital_algo
+          { kms: {} },
+          { kms: {} },
+          { kms: {} },
           kmsRef,
-          1, // enc_version
-          { xChaCha20: {} }, // enc_algo
-          // --- Use 'record' state for on-chain attributes ---
+          1,
+          { xChaCha20: {} },
           record.hospital_id || "",
           record.hospital_name || "",
           record.doctor_name || "",
@@ -497,8 +476,8 @@ export default function Page() {
           record.description || ""
         )
         .accounts({
-          uploader: wallet.publicKey, // hospital signer
-          payer: patientPk, // <-- CRITICAL FIX: Patient co-signer (rent payer)
+          uploader: wallet.publicKey,
+          payer: patientPk,
           config: configPda,
           patient: patientPda,
           patientSeq: patientSeqPda,
@@ -515,49 +494,46 @@ export default function Page() {
           systemProgram: SystemProgram.programId,
         });
 
-      // If both are the same wallet (dev), just send normally
       if (wallet.publicKey.equals(patientPk)) {
         setStatus("Submitting (single-signer test path)...");
         const sig = await method.rpc();
-        setStatus(`✅ Tx: ${sig}`);
+        toast.success(`Transaction confirmed: ${sig}`);
+        setView("form");
         return;
       }
 
-      // ---------- Multi-sign path (Hospital pays network fee) ----------
       setStatus("Building instruction...");
       const ix = await method.instruction();
-      setLastIx(ix); // save for refresh
+      setLastIx(ix);
 
-      setStatus("Compiling legacy message (feePayer = hospital)...");
       const { blockhash } = await connection.getLatestBlockhash("finalized");
-
       const ltx = new Transaction({
-        feePayer: wallet.publicKey, // hospital pays fee
+        feePayer: wallet.publicKey,
         recentBlockhash: blockhash,
       }).add(ix);
 
-      if (!waSignTx) {
+      if (!waSignTx)
         throw new Error(
           "This wallet cannot sign transactions. Use Phantom/Backpack/Solflare."
         );
-      }
 
-      setStatus("Signing as hospital (legacy tx)...");
       const signedByHospital = await waSignTx(ltx);
-
-      // Serialize WITHOUT requiring all signatures (patient still missing)
       const b64 = Buffer.from(
         signedByHospital.serialize({ requireAllSignatures: false })
       ).toString("base64");
 
       setCoSignBase64(b64);
-      setStatus(
-        "Waiting for patient co-sign. Share the base64 or the link below with the patient."
+      setView("qr"); // ✅ show QR code page
+      toast.success(
+        "Transaction created successfully. Awaiting patient co-sign."
       );
-      // -----------------------------------------------------------------
     } catch (e: any) {
       const msg = e?.message || e?.toString?.() || "Unknown error";
       setStatus(`❌ ${msg}`);
+      setView("form"); // ⏪ re-render form
+      toast.error("Failed to initialize transaction.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -590,361 +566,392 @@ export default function Page() {
     patientAccountOk === true &&
     grantOk === true;
 
+  // ==================== CLEAR ALL STATE ====================
+  const handleClearUpload = () => {
+    setRecord(null);
+    setOriginal(null);
+    setZipName(null);
+    setImages([]);
+    setPreviews([]);
+    setStatus("");
+    setPatientCheckStatus(null);
+    setHospitalOk(null);
+    setPatientAccountOk(null);
+    setGrantOk(null);
+    setGrantErr("");
+    setCoSignBase64("");
+    setLastIx(null);
+
+    // Reset the file input value
+    const input = document.getElementById(
+      "zip-input"
+    ) as HTMLInputElement | null;
+    if (input) input.value = "";
+
+    console.log("Upload cleared and all states reset.");
+  };
+
   // ==================== RENDER ====================
   return (
-    <main className="my-6">
-      <header className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-architekt font-bold dark:text-white">
-          Edit & Submit Record
-        </h1>
-      </header>
+    <main className="my-6 min-h-[70vh] flex items-center justify-center">
+      {/* ========== LOADING VIEW ========== */}
+      {view === "loading" && (
+        <div className="flex flex-col items-center justify-center gap-4 text-center">
+          <div className="w-10 h-10 border-4 border-t-transparent border-primary rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">
+            Submitting encrypted record to blockchain...
+          </p>
+        </div>
+      )}
 
-      <Input
-        type="file"
-        accept=".zip"
-        onChange={handleFileUpload}
-        className="mb-4"
-      />
+      {/* ========== QR VIEW ========== */}
+      {view === "qr" && coSignBase64 && (
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Scan this QR to load the transaction on the patient&apos;s device:
+          </p>
 
-      {/* --- STATUS BANNERS --- */}
-      <div className="space-y-2 mb-4">
-        {/* --- Failure States --- */}
-        {hospitalOk === false && (
-          <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
-            ❌ This wallet is <b>not</b> a registered hospital authority.
+          <div className="p-3 border rounded bg-white dark:bg-black">
+            <QRCodeCanvas
+              value={coSignBase64}
+              size={256}
+              level="L"
+              includeMargin
+            />
           </div>
-        )}
 
-        {patientAccountOk === false && record?.patient_pubkey && (
-          <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
-            ⚠️ Patient not registered. Ask them to upsert on the Patients page.
-          </div>
-        )}
+          <p className="text-xs text-muted-foreground break-all max-w-[90%] text-center">
+            {coSignBase64.slice(0, 64)}...
+          </p>
 
-        {grantOk === false && (
-          <div className="rounded border border-yellow-600/40 bg-yellow-600/10 p-2 text-yellow-600">
-            ⚠️ Write grant missing:
-            {grantErr || "Patient must grant Write access to this hospital."}
-          </div>
-        )}
+          <Button variant="secondary" onClick={() => setView("form")}>
+            Back to Form
+          </Button>
+        </div>
+      )}
 
-        {/* --- Success State --- */}
-        {hospitalOk && patientAccountOk && grantOk && (
-          <div className="rounded border border-emerald-600/40 bg-emerald-600/10 p-3 text-emerald-600">
-            ✅ <b>All checks passed successfully.</b>
-            <ul className="mt-2 list-disc list-inside space-y-1 text-emerald-700/90 dark:text-emerald-400/90">
-              <li>
-                <b>Hospital verified:</b> This connected wallet is a registered
-                hospital authority on-chain.
-              </li>
-              <li>
-                <b>Patient verified:</b> The provided patient account exists and
-                matches the on-chain registry.
-              </li>
-              <li>
-                <b>Grant confirmed:</b> Patient has granted <b>Write access</b>{" "}
-                to this hospital.
-              </li>
-            </ul>
-          </div>
-        )}
-      </div>
+      {/* ========== FORM VIEW ========== */}
+      {view === "form" && (
+        <div className="w-full mx-auto">
+          <header className="flex justify-center items-center mb-5">
+            <h1 className="text-2xl font-architekt font-bold">
+              Edit & Submit Record
+            </h1>
+          </header>
 
-      {record && zipName && (
-        <section className="flex flex-col gap-y-3 border p-3 mt-5 rounded">
-          <h1 className="text-2xl font-bold font-architekt">{zipName}</h1>
+          <Input
+            id="zip-input"
+            type="file"
+            accept=".zip"
+            onChange={handleFileUpload}
+            className="mb-4"
+          />
 
-          <div className="flex flex-col gap-8 mt-6">
-            {/* ──────────────── 🧩 PATIENT SECTION ──────────────── */}
-            <section>
-              <h2 className=" font-bold mb-3 text-lg">Patient Information</h2>
-
-              <div>
-                <label className="font-medium">Patient Pubkey</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={record.patient_pubkey ?? ""}
-                    onChange={(e) =>
-                      handleChange("patient_pubkey", e.target.value)
-                    }
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleReset("patient_pubkey")}
-                  >
-                    Revert
-                  </Button>
-                </div>
-
-                {patientCheckStatus && (
-                  <p
-                    className={`mt-1 text-sm ${
-                      patientCheckStatus.startsWith("✅")
-                        ? "text-emerald-600"
-                        : patientCheckStatus.startsWith("❌")
-                        ? "text-red-600"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {patientCheckStatus}
-                  </p>
-                )}
-              </div>
-            </section>
-
-            {/* ──────────────── 🏥 DOCTOR & HOSPITAL SECTION ──────────────── */}
-            <section>
-              <h2 className=" font-bold mb-3 text-lg">
-                Doctor & Hospital Details
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Hospital ID */}
-                <div>
-                  <label className="font-medium">Hospital ID</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={record.hospital_id ?? ""}
-                      onChange={(e) =>
-                        handleChange("hospital_id", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("hospital_id")}
-                    >
-                      Revert
-                    </Button>
-                    <Button onClick={handleFill}>Fill</Button>
-                  </div>
-                </div>
-
-                {/* Doctor Name */}
-                <div>
-                  <label className="font-medium">Doctor Name</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={record.doctor_name ?? ""}
-                      onChange={(e) =>
-                        handleChange("doctor_name", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("doctor_name")}
-                    >
-                      Revert
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Hospital Pubkey */}
-                <div>
-                  <label className="font-medium">Hospital Pubkey</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={record.hospital_pubkey ?? ""}
-                      onChange={(e) =>
-                        handleChange("hospital_pubkey", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("hospital_pubkey")}
-                    >
-                      Revert
-                    </Button>
-                    <Button onClick={handleFill}>Fill</Button>
-                  </div>
-                </div>
-
-                {/* Doctor ID */}
-                <div>
-                  <label className="font-medium">Doctor ID</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={record.doctor_id ?? ""}
-                      onChange={(e) =>
-                        handleChange("doctor_id", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("doctor_id")}
-                    >
-                      Revert
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Hospital Name */}
-                <div>
-                  <label className="font-medium">Hospital Name</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={record.hospital_name ?? ""}
-                      onChange={(e) =>
-                        handleChange("hospital_name", e.target.value)
-                      }
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("hospital_name")}
-                    >
-                      Revert
-                    </Button>
-                    <Button onClick={handleFill}>Fill</Button>
-                  </div>
-                </div>
-
-                {/* Empty placeholder (for symmetry) */}
-                <div></div>
-              </div>
-            </section>
-
-            {/* ──────────────── 📋 RECORD SECTION ──────────────── */}
-            <section>
-              <h2 className="font-bold mb-3 text-lg">Record Details</h2>
-
-              <div className="flex flex-col gap-4">
-                {/* Diagnosis */}
-                <div>
-                  <label className="font-medium">Diagnosis</label>
-                  <div className="flex gap-2">
-                    <Textarea
-                      value={record.diagnosis ?? ""}
-                      onChange={(e) =>
-                        handleChange("diagnosis", e.target.value)
-                      }
-                      className="min-h-[80px] w-full"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("diagnosis")}
-                    >
-                      Revert
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Keywords */}
-                <div>
-                  <label className="font-medium">Keywords</label>
-                  <div className="flex gap-2">
-                    <Textarea
-                      value={record.keywords ?? ""}
-                      onChange={(e) => handleChange("keywords", e.target.value)}
-                      className="min-h-[80px] w-full"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("keywords")}
-                    >
-                      Revert
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="font-medium">Description</label>
-                  <div className="flex gap-2">
-                    <Textarea
-                      value={record.description ?? ""}
-                      onChange={(e) =>
-                        handleChange("description", e.target.value)
-                      }
-                      className="min-h-[120px] w-full"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleReset("description")}
-                    >
-                      Revert
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* ──────────────── 🖼️ PREVIEW SECTION ──────────────── */}
-            {previews.length > 0 && (
-              <section>
-                <h2 className="font-bold mb-3 ">Attached Preview</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {previews.map((src, i) => (
-                    <div
-                      key={i}
-                      className="relative w-full aspect-square border rounded overflow-hidden"
-                    >
-                      <Image
-                        src={src}
-                        alt={`Preview ${i}`}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </section>
+          {/* --- STATUS BANNERS --- */}
+          <div className="space-y-2 mb-4">
+            {hospitalOk === false && (
+              <StatusBanner type="error">
+                ❌ This wallet is not a registered hospital authority.
+              </StatusBanner>
             )}
 
-            {/* ──────────────── ⚙️ ACTION BUTTONS ──────────────── */}
-            <section className="mt-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button onClick={handleDownloadZip} className="flex-1">
-                  Download Updated ZIP
-                </Button>
-                <Button
-                  onClick={handleSubmitOnChain}
-                  disabled={!readyToSubmit}
-                  className="flex-1"
-                >
-                  Submit On-Chain
-                </Button>
-              </div>
-            </section>
+            {patientAccountOk === false && record?.patient_pubkey && (
+              <StatusBanner type="error">
+                ⚠️ Patient not registered. Ask them to upsert on the Patients
+                page.
+              </StatusBanner>
+            )}
+
+            {grantOk === false && (
+              <StatusBanner type="warning">
+                ⚠️ Write grant missing:{" "}
+                {grantErr ||
+                  "Patient must grant Write access to this hospital."}
+              </StatusBanner>
+            )}
+
+            {hospitalOk && patientAccountOk && grantOk && (
+              <StatusBanner type="success">All Verified</StatusBanner>
+            )}
           </div>
 
-          {/* --- RENDER SUBMIT STATUS --- */}
-          {status && <p className=" mt-4 whitespace-pre-wrap">{status}</p>}
+          {/* --- RECORD FORM --- */}
+          {record && zipName && (
+            <section className="flex flex-col gap-y-3 border p-3 mt-5 rounded-xs">
+              <h1 className="text-2xl font-bold font-architekt">{zipName}</h1>
 
-          {/* --- MULTI-SIGN OUTPUT (COPIED) --- */}
-          {coSignBase64 && (
-            <div className="mt-4 space-y-2">
-              <label className=" font-medium">
-                Base64 transaction (hospital-signed). Send to the patient to
-                co-sign &amp; submit:
-              </label>
-              <textarea
-                readOnly
-                className="w-full border rounded p-2 text-xs font-mono h-40"
-                value={coSignBase64}
-              />
-              <div className="flex gap-2 items-center flex-wrap">
-                <Button size="sm" onClick={() => copyToClipboard(coSignBase64)}>
-                  Copy
-                </Button>
-                <Button size="sm" variant="secondary" onClick={refreshCosignTx}>
-                  Refresh co-sign TX
-                </Button>
-                {shareUrl && (
-                  <span className="text-xs break-all">
-                    or share this link:&nbsp;
-                    <a
-                      className="underline"
-                      href={shareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {shareUrl}
-                    </a>
-                  </span>
+              <div className="flex flex-col gap-8 mt-6">
+                {/* ──────────────── 🧩 PATIENT SECTION ──────────────── */}
+                <section>
+                  <h2 className="font-bold mb-3 text-lg">
+                    Patient Information
+                  </h2>
+
+                  <div>
+                    <label className="font-medium">Patient Pubkey</label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={record.patient_pubkey ?? ""}
+                        onChange={(e) =>
+                          handleChange("patient_pubkey", e.target.value)
+                        }
+                      />
+                      <Button
+                        variant="secondary"
+                        onClick={() => handleReset("patient_pubkey")}
+                      >
+                        Revert
+                      </Button>
+                    </div>
+
+                    {patientCheckStatus && (
+                      <p
+                        className={`mt-1 text-sm ${
+                          patientCheckStatus.startsWith("✅")
+                            ? "text-emerald-600"
+                            : patientCheckStatus.startsWith("❌")
+                            ? "text-red-600"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {patientCheckStatus}
+                      </p>
+                    )}
+                  </div>
+                </section>
+
+                {/* ──────────────── 🏥 DOCTOR & HOSPITAL SECTION ──────────────── */}
+                <section>
+                  <h2 className="font-bold mb-3 text-lg">
+                    Doctor & Hospital Details
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Hospital ID */}
+                    <div>
+                      <label className="font-medium">Hospital ID</label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={record.hospital_id ?? ""}
+                          onChange={(e) =>
+                            handleChange("hospital_id", e.target.value)
+                          }
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("hospital_id")}
+                        >
+                          Revert
+                        </Button>
+                        <Button onClick={handleFill}>Fill</Button>
+                      </div>
+                    </div>
+
+                    {/* Doctor Name */}
+                    <div>
+                      <label className="font-medium">Doctor Name</label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={record.doctor_name ?? ""}
+                          onChange={(e) =>
+                            handleChange("doctor_name", e.target.value)
+                          }
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("doctor_name")}
+                        >
+                          Revert
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Hospital Pubkey */}
+                    <div>
+                      <label className="font-medium">Hospital Pubkey</label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={record.hospital_pubkey ?? ""}
+                          onChange={(e) =>
+                            handleChange("hospital_pubkey", e.target.value)
+                          }
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("hospital_pubkey")}
+                        >
+                          Revert
+                        </Button>
+                        <Button onClick={handleFill}>Fill</Button>
+                      </div>
+                    </div>
+
+                    {/* Doctor ID */}
+                    <div>
+                      <label className="font-medium">Doctor ID</label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={record.doctor_id ?? ""}
+                          onChange={(e) =>
+                            handleChange("doctor_id", e.target.value)
+                          }
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("doctor_id")}
+                        >
+                          Revert
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Hospital Name */}
+                    <div>
+                      <label className="font-medium">Hospital Name</label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={record.hospital_name ?? ""}
+                          onChange={(e) =>
+                            handleChange("hospital_name", e.target.value)
+                          }
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("hospital_name")}
+                        >
+                          Revert
+                        </Button>
+                        <Button onClick={handleFill}>Fill</Button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ──────────────── 📋 RECORD SECTION ──────────────── */}
+                <section>
+                  <h2 className="font-bold mb-3 text-lg">Record Details</h2>
+
+                  <div className="flex flex-col gap-4">
+                    {/* Diagnosis */}
+                    <div>
+                      <label className="font-medium">Diagnosis</label>
+                      <div className="flex gap-2">
+                        <Textarea
+                          value={record.diagnosis ?? ""}
+                          onChange={(e) =>
+                            handleChange("diagnosis", e.target.value)
+                          }
+                          className="min-h-[80px] w-full"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("diagnosis")}
+                        >
+                          Revert
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Keywords */}
+                    <div>
+                      <label className="font-medium">Keywords</label>
+                      <div className="flex gap-2">
+                        <Textarea
+                          value={record.keywords ?? ""}
+                          onChange={(e) =>
+                            handleChange("keywords", e.target.value)
+                          }
+                          className="min-h-[80px] w-full"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("keywords")}
+                        >
+                          Revert
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label className="font-medium">Description</label>
+                      <div className="flex gap-2">
+                        <Textarea
+                          value={record.description ?? ""}
+                          onChange={(e) =>
+                            handleChange("description", e.target.value)
+                          }
+                          className="min-h-[120px] w-full"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleReset("description")}
+                        >
+                          Revert
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ──────────────── 🖼️ PREVIEW SECTION ──────────────── */}
+                {previews.length > 0 && (
+                  <section>
+                    <h2 className="font-bold mb-3">Attached Preview</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {previews.map((src, i) => (
+                        <div
+                          key={i}
+                          className="relative w-full aspect-square border rounded-xs overflow-hidden"
+                        >
+                          <Image
+                            src={src}
+                            alt={`Preview ${i}`}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 )}
+
+                {/* ──────────────── ⚙️ ACTION BUTTONS ──────────────── */}
+                <section className="mt-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={handleDownloadZip}
+                      className="flex-1"
+                      disabled={isSubmitting}
+                    >
+                      Download Updated ZIP
+                    </Button>
+                    <Button
+                      onClick={handleSubmitOnChain}
+                      disabled={!readyToSubmit || isSubmitting}
+                      className="flex-1"
+                    >
+                      {isSubmitting ? "Submitting..." : "Submit On-Chain"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleClearUpload}
+                      disabled={isSubmitting}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </section>
               </div>
-            </div>
+
+              {status && (
+                <p className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">
+                  {status}
+                </p>
+              )}
+            </section>
           )}
-        </section>
+        </div>
       )}
     </main>
   );

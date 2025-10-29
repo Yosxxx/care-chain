@@ -59,7 +59,7 @@
 }
 
 :root {
-  --background: oklch(0.9911 0 0);
+  --background: oklch(99.107% 0.00011 271.152);
   --foreground: oklch(0.2046 0 0);
   --card: oklch(0.9911 0 0);
   --card-foreground: oklch(0.2046 0 0);
@@ -217,5 +217,48 @@
   }
   body {
     @apply bg-background text-foreground font-inter;
+  }
+}
+
+@layer components {
+  /* === STATUS BANNERS === */
+  .banner-base {
+    @apply rounded-md border p-2 text-xs font-medium;
+  }
+
+  /* Error / Destructive */
+  .banner-error {
+    border-color: var(--color-destructive-border);
+    background-color: color-mix(
+      in oklch,
+      var(--color-destructive) 10%,
+      transparent
+    );
+    color: var(--color-destructive-foreground);
+  }
+
+  /* Warning (yellow tone) */
+  .banner-warning {
+    border-color: oklch(0.85 0.15 85);
+    background-color: color-mix(in oklch, oklch(0.85 0.15 85) 10%, transparent);
+    color: oklch(0.7 0.17 85);
+  }
+
+  /* Success (green tone) */
+  .banner-success {
+    border-color: oklch(0.75 0.15 150);
+    background-color: color-mix(
+      in oklch,
+      oklch(0.75 0.15 150) 10%,
+      transparent
+    );
+    color: oklch(0.6 0.18 150);
+  }
+
+  /* Info (neutral tone) */
+  .banner-info {
+    border-color: oklch(0.8 0 0);
+    background-color: color-mix(in oklch, oklch(0.8 0 0) 8%, transparent);
+    color: oklch(0.4 0 0);
   }
 }

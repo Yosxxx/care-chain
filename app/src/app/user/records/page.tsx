@@ -250,19 +250,17 @@ export default function Page() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">My Records</h1>
-          <p className="text-gray-500">
-            View and download your medical records
-          </p>
+          <p className="">View and download your medical records</p>
         </div>
       </div>
 
       {!publicKey && (
-        <div className="text-yellow-600 border border-yellow-600/40 bg-yellow-600/10 p-2 rounded">
+        <div className="text-yellow-600 border border-yellow-600/40 bg-yellow-600/10 p-2 rounded-xs">
           Connect wallet to load your records.
         </div>
       )}
       {publicKey && patientOk === false && (
-        <div className="text-red-600 border border-red-600/40 bg-red-600/10 p-2 rounded">
+        <div className="text-red-600 border border-red-600/40 bg-red-600/10 p-2 rounded-xs">
           This wallet is not registered as a patient yet.
         </div>
       )}
@@ -278,6 +276,7 @@ export default function Page() {
             setPage(1);
           }}
         />
+
         <FilterButton
           options={[
             { label: "Default", value: null },
@@ -297,7 +296,7 @@ export default function Page() {
       {/* Record Cards */}
       <div className="flex flex-col gap-y-4">
         {paginated.map((rec) => (
-          <Collapsible key={rec.pda} className="border p-4 rounded">
+          <Collapsible key={rec.pda} className="border p-4 rounded-xs">
             <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4">
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate text-sm">
@@ -322,35 +321,35 @@ export default function Page() {
               {/* Two-row metadata layout */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium text-[-10px]">
                     Hospital ID
                   </div>
-                  <div className="font-mono border p-1 rounded">
+                  <div className="font-mono border p-2 rounded-xs">
                     {rec.hospital_id || "N/A"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium text-[-10px]">
                     Doctor ID
                   </div>
-                  <div className="font-mono border p-1 rounded">
+                  <div className="font-mono border p-2 rounded-xs">
                     {rec.doctor_id || "N/A"}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium text-[-10px]">
                     Hospital Name
                   </div>
-                  <div className="font-mono border p-1 rounded">
+                  <div className="font-mono border p-2 rounded-xs">
                     {rec.hospital_name || "N/A"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium text-[-10px]">
                     Doctor Name
                   </div>
-                  <div className="font-mono border p-1 rounded">
+                  <div className="font-mono border p-2 rounded-xs">
                     {rec.doctor_name || "N/A"}
                   </div>
                 </div>
@@ -359,10 +358,10 @@ export default function Page() {
               {/* Pubkey Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium text-[-10px]">
                     Hospital Pubkey
                   </div>
-                  <div className="font-mono border p-1 rounded break-all">
+                  <div className="font-mono border p-2 rounded-xs break-all">
                     {rec.hospital}
                   </div>
                 </div>
@@ -374,10 +373,8 @@ export default function Page() {
               {/* Description */}
               {rec.description && (
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
-                    Description
-                  </div>
-                  <p className="whitespace-pre-wrap border p-2 rounded">
+                  <div className="text-xs font-medium">Description</div>
+                  <p className="whitespace-pre-wrap border p-2 rounded-xs min-h-52 max-h-52">
                     {rec.description}
                   </p>
                 </div>
@@ -386,14 +383,14 @@ export default function Page() {
               {/* Solscan Link */}
               {rec.txSignature && (
                 <div>
-                  <div className="text-xs text-gray-500 font-medium">
+                  <div className="text-xs  font-medium">
                     Transaction Signature
                   </div>
                   <a
                     href={`https://solscan.io/tx/${rec.txSignature}?cluster=devnet`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                    className="flex items-center gap-2 text-blue-600 hover:text-blue-800 underline"
                   >
                     View on Solscan <ExternalLink className="w-4 h-4" />
                   </a>

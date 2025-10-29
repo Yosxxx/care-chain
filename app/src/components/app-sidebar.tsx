@@ -75,7 +75,7 @@ export default function AppSidebar({
                   w-full justify-start gap-x-2 px-4 text-muted-foreground
                   ${
                     active
-                      ? "text-primary font-medium dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
+                      ? "text-primary font-medium dark:bg-sidebar-accent dark:text-sidebar-accent-foreground "
                       : "hover:text-foreground dark:hover:text-white"
                   }
                 `}
@@ -163,7 +163,7 @@ export default function AppSidebar({
 
         {/* Footer */}
         <div className="text-xs px-4 py-1.5 text-muted-foreground">
-          CareChain – Org
+          2025 CareChain - Org
         </div>
       </div>
     </aside>

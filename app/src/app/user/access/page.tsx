@@ -392,14 +392,14 @@ export default function Page() {
 
   // --- JSX (No Cards) ---
   return (
-    <main className="mx-auto my-6 space-y-6">
-      <header className="font-architekt p-2 border rounded">
+    <main className="mx-auto my-5">
+      <header className="font-architekt p-2 border rounded-xs">
         <div className="flex font-bold gap-x-2 items-center">
           <Search size={20} /> Search for Hospitals
         </div>
       </header>
 
-      <div className="flex w-full items-center space-x-2">
+      <div className="flex w-full items-center space-x-2 mt-2">
         <Input
           type="text"
           placeholder="grantee (hospital authority pubkey)"
@@ -431,12 +431,12 @@ export default function Page() {
 
       {/* Grantee Selection Section */}
       {hospital && (
-        <section className="border rounded-lg p-6 space-y-6 bg-card shadow-sm">
+        <section className="border roudned-xs p-6 space-y-6 bg-card mt-5">
           <main className="space-y-6">
             {/* Hospital Verification Card */}
-            <div className="border rounded-lg p-5 bg-card">
+            <div className="border roudned-xs p-5 bg-card">
               <div className="flex items-start gap-4">
-                <div className="p-2 rounded-md bg-secondary flex items-center justify-center">
+                <div className="p-2 roudned-xs bg-secondary flex items-center justify-center">
                   <BookCheck className="w-5 h-5 text-secondary-foreground" />
                 </div>
 
@@ -481,7 +481,7 @@ export default function Page() {
             {/* Manage Access Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-foreground">
+                <h2 className="text font-semibold text-foreground">
                   Manage Access
                 </h2>
                 <p className="text-xs text-muted-foreground">
@@ -490,7 +490,7 @@ export default function Page() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                {/* Grant Write Button */}
+                {/* === Grant Write Button === */}
                 <Button
                   onClick={async () => {
                     try {
@@ -528,7 +528,7 @@ export default function Page() {
                     : "Grant Write"}
                 </Button>
 
-                {/* Grant Read Button */}
+                {/* === Grant Read Button === */}
                 <Button
                   onClick={async () => {
                     try {
@@ -566,7 +566,7 @@ export default function Page() {
                     : "Grant Read"}
                 </Button>
 
-                {/* Revoke All Button */}
+                {/* === Revoke All Button === */}
                 <Button
                   onClick={async () => {
                     try {
@@ -582,6 +582,40 @@ export default function Page() {
                 >
                   Revoke All
                 </Button>
+
+                {/* === Grant All Button === */}
+                <Button
+                  onClick={async () => {
+                    try {
+                      // If neither active → grant both
+                      if (!current[1] && !current[2]) {
+                        await upsertOne(1);
+                        await upsertOne(2);
+                      }
+                      // If one active → grant missing one
+                      else if (current[1] && !current[2]) {
+                        await upsertOne(2);
+                      } else if (!current[1] && current[2]) {
+                        await upsertOne(1);
+                      }
+                      await loadGrants();
+                    } catch (e: any) {
+                      setErr(e?.message ?? String(e));
+                    }
+                  }}
+                  disabled={!canAct || !grantee || (current[1] && current[2])}
+                  variant={
+                    (!current[1] && !current[2]) || current[1] !== current[2]
+                      ? "default"
+                      : "outline"
+                  }
+                >
+                  {current[1] && current[2]
+                    ? "All Granted"
+                    : !current[1] && !current[2]
+                    ? "Grant All"
+                    : "Grant Remaining"}
+                </Button>
               </div>
             </div>
           </main>
@@ -594,8 +628,8 @@ export default function Page() {
       )}
 
       {/* Grants List Section */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Current Grants</h2>
+      <section className="space-y-4 mt-5">
+        <h2 className="text font-semibold">Current Grants</h2>
         <p className="text-sm text-muted-foreground">
           {grantee
             ? "Grants for the selected hospital."
@@ -618,8 +652,8 @@ export default function Page() {
         {!loading && paginatedGrants.length > 0 && (
           <div className="flex flex-col gap-y-3">
             {paginatedGrants.map((g) => (
-              <Collapsible key={g.pubkey} className="border p-4 rounded">
-                <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4">
+              <Collapsible key={g.pubkey} className="border p-4 roudned-xs">
+                <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4 hover:cursor-pointer">
                   <div className="flex-1 min-w-0">
                     {/* --- UPDATED --- */}
                     <div className="font-semibold truncate text-sm">
@@ -651,7 +685,7 @@ export default function Page() {
                         Hospital Pubkey (Grantee)
                       </div>
                       <div className="flex gap-x-2">
-                        <div className="font-mono rounded border bg-muted p-2 break-all text-foreground flex-1">
+                        <div className="font-mono roudned-xs border bg-muted p-2 break-all text-foreground flex-1">
                           {g.grantee}
                         </div>
                         {/* Copy button */}
@@ -659,6 +693,7 @@ export default function Page() {
                           type="button"
                           variant="outline"
                           size="icon"
+                          className="hover:cursor-pointer"
                           onClick={async () => {
                             try {
                               await navigator.clipboard.writeText(g.grantee);
@@ -673,6 +708,7 @@ export default function Page() {
                           <ClipboardCopyIcon className="h-4 w-4" />
                         </Button>
                         <Button
+                          className="hover:cursor-pointer"
                           type="button"
                           variant="outline"
                           size="icon"
@@ -690,7 +726,7 @@ export default function Page() {
                       <div className="font-semibold uppercase text-[10px]">
                         Grant PDA (TX)
                       </div>
-                      <div className="font-mono rounded border bg-muted p-2 break-all text-foreground">
+                      <div className="font-mono roudned-xs border bg-muted p-2 break-all text-foreground">
                         {g.pubkey}
                       </div>
                     </div>
@@ -699,7 +735,7 @@ export default function Page() {
                       <div className="font-semibold uppercase text-[10px]">
                         Created By
                       </div>
-                      <div className="font-mono rounded border bg-muted p-2 break-all text-foreground">
+                      <div className="font-mono roudned-xs border bg-muted p-2 break-all text-foreground">
                         {g.createdBy}
                       </div>
                     </div>
@@ -780,27 +816,3 @@ export default function Page() {
     </main>
   );
 }
-
-// Helper component for collapsible content
-const DetailRow = ({
-  label,
-  value,
-  isMono = false,
-}: {
-  label: string;
-  value: string;
-  isMono?: boolean;
-}) => (
-  <div>
-    <div className="text-xs font-semibold text-muted-foreground uppercase">
-      {label}
-    </div>
-    <div
-      className={`rounded border bg-muted p-2 text-muted-foreground break-all ${
-        isMono ? "font-mono" : ""
-      }`}
-    >
-      {value}
-    </div>
-  </div>
-);

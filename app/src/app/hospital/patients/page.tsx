@@ -27,10 +27,11 @@ export default function Page() {
 
   return (
     <main className="mt-5">
-      <div className="flex items-center gap-x-3 border p-2">
-        <Search className="w-5 h-5" />
-        <span>SEARCH USERS</span>
-      </div>
+      <header className="font-architekt p-2 border rounded-xs">
+        <div className="flex font-bold gap-x-2 items-center">
+          <Search size={20} /> Search Users
+        </div>
+      </header>
 
       <div className="mt-2 flex gap-x-5">
         <Input placeholder="Search by wallet" />
