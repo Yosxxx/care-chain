@@ -9,7 +9,7 @@ import {
   Search,
   Loader2,
   ChevronsUpDown,
-  SearchCheck,
+  ClipboardCopyIcon,
   BookCheck,
 } from "lucide-react"; // Import icons
 import idl from "../../../../anchor.json";
@@ -24,8 +24,6 @@ import { SCOPE_OPTIONS } from "@/lib/constants";
 // Import shadcn/ui components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import {
@@ -41,6 +39,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
 
 // --- Type definitions (unchanged) ---
 type HospitalUi = {
@@ -392,13 +392,10 @@ export default function Page() {
 
   // --- JSX (No Cards) ---
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-6">
+    <main className="mx-auto my-6 space-y-6">
       <header className="font-architekt p-2 border rounded">
-        <div className="flex justify-between items-center">
-          <div className="flex font-bold gap-x-2 items-center">
-            <Search size={20} /> Search for Hospitals
-          </div>
-          <div>░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░</div>
+        <div className="flex font-bold gap-x-2 items-center">
+          <Search size={20} /> Search for Hospitals
         </div>
       </header>
 
@@ -433,184 +430,167 @@ export default function Page() {
       )}
 
       {/* Grantee Selection Section */}
-      <section className="border rounded-lg p-6 space-y-6 bg-white shadow-sm">
-        {activeGranteeStr.trim() ? (
-          <>
-            {hospital ? (
-              <main className="space-y-6">
-                {/* ✅ Hospital Verification Card */}
-                <div className="border rounded-md p-4 bg-green-50 border-green-200">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="bg-green-200 p-2 rounded-full">
-                      <BookCheck className="text-green-800" />
-                    </div>
-                    <div className="flex-1">
-                      <h2 className="text-green-800 font-semibold text-sm">
-                        Hospital Verified
-                      </h2>
-                      <p className="text-xs text-green-700">
-                        Authority confirmed and active
-                      </p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3 text-xs text-gray-700">
-                        <div>
-                          <div className="font-medium text-gray-500">Name</div>
-                          <div>{hospital.name}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium text-gray-500">
-                            Authority
-                          </div>
-                          <div className="font-mono break-all text-gray-600">
-                            {hospital.authority}
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <div className="font-medium text-gray-500">
-                            Hospital PDA
-                          </div>
-                          <div className="font-mono break-all text-gray-600">
-                            {hospital.pubkey}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+      {hospital && (
+        <section className="border rounded-lg p-6 space-y-6 bg-card shadow-sm">
+          <main className="space-y-6">
+            {/* Hospital Verification Card */}
+            <div className="border rounded-lg p-5 bg-card">
+              <div className="flex items-start gap-4">
+                <div className="p-2 rounded-md bg-secondary flex items-center justify-center">
+                  <BookCheck className="w-5 h-5 text-secondary-foreground" />
                 </div>
 
-                {/* ✅ Manage Access Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">Manage Access</h2>
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">
+                      Hospital Verified
+                    </h2>
                     <p className="text-xs text-muted-foreground">
-                      Direct permission actions for this hospital.
+                      Authority confirmed and active
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    {/* --- Grant Write Button --- */}
-                    <Button
-                      onClick={async () => {
-                        try {
-                          // If both active → revoke read, keep write
-                          if (current[1] && current[2]) {
-                            await revokeOne(1);
-                            await upsertOne(2);
-                          }
-                          // If only READ active → revoke read, grant write
-                          else if (current[1] && !current[2]) {
-                            await revokeOne(1);
-                            await upsertOne(2);
-                          }
-                          // Otherwise → just grant write
-                          else if (!current[2]) {
-                            await upsertOne(2);
-                          }
-                          await loadGrants();
-                        } catch (e: any) {
-                          setErr(e?.message ?? String(e));
-                        }
-                      }}
-                      disabled={!canAct || !grantee}
-                      className="font-medium bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
-                      {current[1] && current[2]
-                        ? "Revoke Read → Grant Write"
-                        : current[1] && !current[2]
-                        ? "Revoke Read → Grant Write"
-                        : "Grant Write"}
-                    </Button>
-
-                    {/* --- Grant Read Button --- */}
-                    <Button
-                      onClick={async () => {
-                        try {
-                          // If both active → revoke write, keep read
-                          if (current[1] && current[2]) {
-                            await revokeOne(2);
-                            await upsertOne(1);
-                          }
-                          // If only WRITE active → revoke write, grant read
-                          else if (current[2] && !current[1]) {
-                            await revokeOne(2);
-                            await upsertOne(1);
-                          }
-                          // Otherwise → just grant read
-                          else if (!current[1]) {
-                            await upsertOne(1);
-                          }
-                          await loadGrants();
-                        } catch (e: any) {
-                          setErr(e?.message ?? String(e));
-                        }
-                      }}
-                      disabled={!canAct || !grantee}
-                      className="font-medium bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      {current[1] && current[2]
-                        ? "Revoke Write → Grant Read"
-                        : current[2] && !current[1]
-                        ? "Revoke Write → Grant Read"
-                        : "Grant Read"}
-                    </Button>
-
-                    {/* --- Grant All Button --- */}
-                    <Button
-                      onClick={async () => {
-                        try {
-                          // If both active → revoke all
-                          if (current[1] && current[2]) {
-                            await revokeOne(1);
-                            await revokeOne(2);
-                          } else {
-                            if (!current[1]) await upsertOne(1);
-                            if (!current[2]) await upsertOne(2);
-                          }
-                          await loadGrants();
-                        } catch (e: any) {
-                          setErr(e?.message ?? String(e));
-                        }
-                      }}
-                      disabled={!canAct || !grantee}
-                      className="font-medium bg-green-700 hover:bg-green-800 text-white"
-                    >
-                      {current[1] && current[2]
-                        ? "Revoke All"
-                        : "Grant All (Read + Write)"}
-                    </Button>
+                  <div className="grid gap-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground/70">Name</span>
+                      <span className="text-foreground font-medium">
+                        {hospital.name}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground/70">
+                        Authority
+                      </span>
+                      <span className="font-mono break-all text-muted-foreground text-right">
+                        {hospital.authority}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-start">
+                      <span className="text-muted-foreground/70">
+                        Hospital PDA
+                      </span>
+                      <span className="font-mono break-all text-muted-foreground text-right">
+                        {hospital.pubkey}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </main>
-            ) : (
-              <div className="text-yellow-700 bg-yellow-50 border border-yellow-200 p-4 rounded-md text-sm">
-                <b>Warning:</b> Hospital not found for this authority. You can
-                still view existing grants, but new grants cannot be issued.
               </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-gray-500 italic">
-            Search for a hospital to manage its access.
-          </p>
-        )}
-      </section>
+            </div>
 
-      {/* Transaction Status */}
-      {sig && (
-        <Alert variant="default">
-          <AlertTitle>Transaction Sent</AlertTitle>
-          <AlertDescription className="font-mono break-all">
-            {sig}
-          </AlertDescription>
-        </Alert>
-      )}
-      {err && (
-        <Alert variant="destructive">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription className="whitespace-pre-wrap">
-            {err}
-          </AlertDescription>
-        </Alert>
+            {/* Manage Access Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Manage Access
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Direct permission actions for this hospital.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                {/* Grant Write Button */}
+                <Button
+                  onClick={async () => {
+                    try {
+                      // If only READ active → revoke read, grant write
+                      if (current[1] && !current[2]) {
+                        await revokeOne(1);
+                        await upsertOne(2);
+                      } else if (!current[2] && !current[1]) {
+                        // If neither active → just grant write
+                        await upsertOne(2);
+                      }
+                      await loadGrants();
+                    } catch (e: any) {
+                      setErr(e?.message ?? String(e));
+                    }
+                  }}
+                  disabled={
+                    !canAct ||
+                    !grantee ||
+                    (current[1] && current[2]) || // both active
+                    (current[2] && !current[1]) // already write only
+                  }
+                  variant={
+                    (current[1] && !current[2]) || (!current[1] && !current[2])
+                      ? "default"
+                      : "outline"
+                  }
+                >
+                  {current[1] && !current[2]
+                    ? "Revoke Read → Grant Write"
+                    : current[2] && !current[1]
+                    ? "Write Granted"
+                    : current[1] && current[2]
+                    ? "All Active"
+                    : "Grant Write"}
+                </Button>
+
+                {/* Grant Read Button */}
+                <Button
+                  onClick={async () => {
+                    try {
+                      // If only WRITE active → revoke write, grant read
+                      if (current[2] && !current[1]) {
+                        await revokeOne(2);
+                        await upsertOne(1);
+                      } else if (!current[1] && !current[2]) {
+                        // If neither active → just grant read
+                        await upsertOne(1);
+                      }
+                      await loadGrants();
+                    } catch (e: any) {
+                      setErr(e?.message ?? String(e));
+                    }
+                  }}
+                  disabled={
+                    !canAct ||
+                    !grantee ||
+                    (current[1] && current[2]) || // both active
+                    (current[1] && !current[2]) // already read only
+                  }
+                  variant={
+                    (current[2] && !current[1]) || (!current[1] && !current[2])
+                      ? "default"
+                      : "outline"
+                  }
+                >
+                  {current[2] && !current[1]
+                    ? "Revoke Write → Grant Read"
+                    : current[1] && !current[2]
+                    ? "Read Granted"
+                    : current[1] && current[2]
+                    ? "All Active"
+                    : "Grant Read"}
+                </Button>
+
+                {/* Revoke All Button */}
+                <Button
+                  onClick={async () => {
+                    try {
+                      if (current[1]) await revokeOne(1);
+                      if (current[2]) await revokeOne(2);
+                      await loadGrants();
+                    } catch (e: any) {
+                      setErr(e?.message ?? String(e));
+                    }
+                  }}
+                  disabled={!canAct || !grantee || (!current[1] && !current[2])}
+                  variant="destructive"
+                >
+                  Revoke All
+                </Button>
+              </div>
+            </div>
+          </main>
+          {/* Transaction Status */}
+          {sig && <div className="font-mono">Transaction: {sig}</div>}
+          {err && (
+            <div className="font-mono text-destructive">Error: {err}</div>
+          )}
+        </section>
       )}
 
       {/* Grants List Section */}
@@ -638,7 +618,7 @@ export default function Page() {
         {!loading && paginatedGrants.length > 0 && (
           <div className="flex flex-col gap-y-3">
             {paginatedGrants.map((g) => (
-              <Collapsible key={g.pubkey} className="border p-3 rounded">
+              <Collapsible key={g.pubkey} className="border p-4 rounded">
                 <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4">
                   <div className="flex-1 min-w-0">
                     {/* --- UPDATED --- */}
@@ -665,15 +645,64 @@ export default function Page() {
                 </CollapsibleTrigger>
 
                 <CollapsibleContent className="mt-4 pt-4 border-t space-y-3">
-                  {/* --- UPDATED: Grant Details --- */}
-                  <div className="space-y-2 text-sm">
-                    <DetailRow
-                      label="Hospital Pubkey (Grantee)"
-                      value={g.grantee}
-                      isMono
-                    />
-                    <DetailRow label="Grant PDA (TX)" value={g.pubkey} isMono />
-                    <DetailRow label="Created By" value={g.createdBy} isMono />
+                  <div className="space-y-2 text-xs text-muted-foreground">
+                    <div>
+                      <div className="font-semibold uppercase text-[10px]">
+                        Hospital Pubkey (Grantee)
+                      </div>
+                      <div className="flex gap-x-2">
+                        <div className="font-mono rounded border bg-muted p-2 break-all text-foreground flex-1">
+                          {g.grantee}
+                        </div>
+                        {/* Copy button */}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(g.grantee);
+                              toast.success(
+                                `Copied Hospital Pubkey: ${g.grantee}`
+                              );
+                            } catch {
+                              console.error("Clipboard copy failed");
+                            }
+                          }}
+                        >
+                          <ClipboardCopyIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            setFilterGranteeStr(g.grantee);
+                            setActiveGranteeStr(g.grantee);
+                          }}
+                        >
+                          <Search className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-semibold uppercase text-[10px]">
+                        Grant PDA (TX)
+                      </div>
+                      <div className="font-mono rounded border bg-muted p-2 break-all text-foreground">
+                        {g.pubkey}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-semibold uppercase text-[10px]">
+                        Created By
+                      </div>
+                      <div className="font-mono rounded border bg-muted p-2 break-all text-foreground">
+                        {g.createdBy}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Revoke button (only shows if a grantee is selected) */}

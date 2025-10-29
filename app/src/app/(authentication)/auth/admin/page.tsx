@@ -28,7 +28,7 @@ export default function Page() {
   return (
     <div className="flex min-h-screen items-center justify-center font-architekt">
       <form onSubmit={handleSubmit} className="min-w-md max-w-md font-bold">
-        <div className="p-5 border">// ADMIN LOGIN ░░░░░░░░░░░░░░░░░░░░░░░</div>
+        <div className="p-5 border text-xl">// ADMIN LOGIN</div>
         <div className="flex flex-col gap-y-5 p-5 border-b border-l border-r">
           <div>
             <Label htmlFor="email" className="mb-2 font-bold">

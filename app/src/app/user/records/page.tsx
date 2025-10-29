@@ -24,7 +24,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { ExternalLink } from "lucide-react";
+import { ChevronsUpDown, ExternalLink } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 const WalletMultiButton = dynamic(
@@ -246,7 +246,7 @@ export default function Page() {
 
   // ================== UI ==================
   return (
-    <main className="space-y-6">
+    <main className="space-y-6 my-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">My Records</h1>
@@ -298,16 +298,24 @@ export default function Page() {
       <div className="flex flex-col gap-y-4">
         {paginated.map((rec) => (
           <Collapsible key={rec.pda} className="border p-4 rounded">
-            <CollapsibleTrigger className="w-full flex justify-between text-left">
-              <div>
-                <div className="font-semibold text-lg">
+            <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold truncate text-sm">
                   {rec.diagnosis || "Untitled Diagnosis"}
                 </div>
+
                 {rec.keywords && (
-                  <div className="text-sm text-gray-500">{rec.keywords}</div>
+                  <div className="text-sm text-muted-foreground space-x-2">
+                    <span>{rec.keywords}</span>
+                  </div>
                 )}
               </div>
-              <div className="text-sm text-gray-500">{rec.createdAt}</div>
+
+              <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
+                {new Date(rec.createdAt).toLocaleDateString()}
+              </div>
+
+              <ChevronsUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CollapsibleTrigger>
 
             <CollapsibleContent className="mt-4 space-y-4 text-sm">

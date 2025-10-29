@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Undo2 } from "lucide-react";
 import { GetHospitalData } from "@/action/GetHospitalData";
-import dynamic from "next/dynamic";
 
 // --- SOLANA IMPORTS ---
 import * as anchor from "@coral-xyz/anchor";
@@ -31,6 +30,7 @@ import {
   findGrantPda,
 } from "@/lib/pda";
 import bs58 from "bs58";
+import { Textarea } from "@/components/ui/textarea";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -592,11 +592,11 @@ export default function Page() {
 
   // ==================== RENDER ====================
   return (
-    <main className="p-5 max-w-2xl mx-auto">
+    <main className="my-6">
       <header className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-semibold">Edit & Submit Record</h1>
-        {/* You might want to add a WalletMultiButton here if it's not in the layout */}
-        {/* <WalletMultiButton /> */}
+        <h1 className="text-2xl font-architekt font-bold dark:text-white">
+          Edit & Submit Record
+        </h1>
       </header>
 
       <Input
@@ -607,115 +607,312 @@ export default function Page() {
       />
 
       {/* --- STATUS BANNERS --- */}
-      <div className="space-y-2 text-sm mb-4">
+      <div className="space-y-2 mb-4">
+        {/* --- Failure States --- */}
         {hospitalOk === false && (
           <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
-            This wallet is <b>not</b> a registered hospital authority.
+            ❌ This wallet is <b>not</b> a registered hospital authority.
           </div>
         )}
+
         {patientAccountOk === false && record?.patient_pubkey && (
           <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
-            Patient not registered. Ask them to upsert on the Patients page.
+            ⚠️ Patient not registered. Ask them to upsert on the Patients page.
           </div>
         )}
+
         {grantOk === false && (
           <div className="rounded border border-yellow-600/40 bg-yellow-600/10 p-2 text-yellow-600">
-            Write grant missing:{" "}
-            {grantErr || "patient must grant Write access to this hospital."}
+            ⚠️ Write grant missing:
+            {grantErr || "Patient must grant Write access to this hospital."}
           </div>
         )}
+
+        {/* --- Success State --- */}
         {hospitalOk && patientAccountOk && grantOk && (
-          <div className="rounded border border-emerald-600/40 bg-emerald-600/10 p-2 text-emerald-600">
-            All checks passed. You can submit the record.
+          <div className="rounded border border-emerald-600/40 bg-emerald-600/10 p-3 text-emerald-600">
+            ✅ <b>All checks passed successfully.</b>
+            <ul className="mt-2 list-disc list-inside space-y-1 text-emerald-700/90 dark:text-emerald-400/90">
+              <li>
+                <b>Hospital verified:</b> This connected wallet is a registered
+                hospital authority on-chain.
+              </li>
+              <li>
+                <b>Patient verified:</b> The provided patient account exists and
+                matches the on-chain registry.
+              </li>
+              <li>
+                <b>Grant confirmed:</b> Patient has granted <b>Write access</b>{" "}
+                to this hospital.
+              </li>
+            </ul>
           </div>
         )}
       </div>
 
       {record && zipName && (
         <section className="flex flex-col gap-y-3 border p-3 mt-5 rounded">
-          <h1 className="text-2xl font-bold">{zipName}</h1>
+          <h1 className="text-2xl font-bold font-architekt">{zipName}</h1>
 
-          {fields.map(({ key, label, textarea, fillable }) => (
-            <div key={key}>
-              <label className="font-medium">{label}</label>
-              <div className="flex gap-x-3">
-                {textarea ? (
-                  <textarea
-                    value={record[key] ?? ""}
-                    onChange={(e) => handleChange(key, e.target.value)}
-                    className="w-full p-2 border rounded min-h-[100px]"
-                  />
-                ) : (
+          <div className="flex flex-col gap-8 mt-6">
+            {/* ──────────────── 🧩 PATIENT SECTION ──────────────── */}
+            <section>
+              <h2 className=" font-bold mb-3 text-lg">Patient Information</h2>
+
+              <div>
+                <label className="font-medium">Patient Pubkey</label>
+                <div className="flex gap-2">
                   <Input
-                    value={record[key] ?? ""}
-                    onChange={(e) => handleChange(key, e.target.value)}
+                    value={record.patient_pubkey ?? ""}
+                    onChange={(e) =>
+                      handleChange("patient_pubkey", e.target.value)
+                    }
                   />
-                )}
-                <Button variant="secondary" onClick={() => handleReset(key)}>
-                  <Undo2 />
-                </Button>
-                {fillable && <Button onClick={handleFill}>Fill</Button>}
-              </div>
-
-              {/* --- RENDER PATIENT CHECK STATUS --- */}
-              {key === "patient_pubkey" && patientCheckStatus && (
-                <p
-                  className={`mt-1 text-sm ${
-                    patientCheckStatus.startsWith("✅")
-                      ? "text-emerald-600"
-                      : patientCheckStatus.startsWith("❌")
-                      ? "text-red-600"
-                      : "text-gray-500"
-                  }`}
-                >
-                  {patientCheckStatus}
-                </p>
-              )}
-            </div>
-          ))}
-
-          {previews.length > 0 && (
-            // ... (image preview grid remains unchanged) ...
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {previews.map((src, i) => (
-                <div
-                  key={i}
-                  className="relative w-full aspect-square border rounded overflow-hidden"
-                >
-                  <Image
-                    src={src}
-                    alt={`Preview ${i}`}
-                    fill
-                    className="object-cover"
-                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleReset("patient_pubkey")}
+                  >
+                    Revert
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
 
-          <div className="flex gap-x-5 mt-4">
-            <Button className="flex-1" onClick={handleDownloadZip}>
-              Download Updated ZIP
-            </Button>
-            <Button
-              className="flex-1"
-              variant="default"
-              onClick={handleSubmitOnChain}
-              disabled={!readyToSubmit}
-            >
-              Submit On-Chain
-            </Button>
+                {patientCheckStatus && (
+                  <p
+                    className={`mt-1 text-sm ${
+                      patientCheckStatus.startsWith("✅")
+                        ? "text-emerald-600"
+                        : patientCheckStatus.startsWith("❌")
+                        ? "text-red-600"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    {patientCheckStatus}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {/* ──────────────── 🏥 DOCTOR & HOSPITAL SECTION ──────────────── */}
+            <section>
+              <h2 className=" font-bold mb-3 text-lg">
+                Doctor & Hospital Details
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Hospital ID */}
+                <div>
+                  <label className="font-medium">Hospital ID</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={record.hospital_id ?? ""}
+                      onChange={(e) =>
+                        handleChange("hospital_id", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("hospital_id")}
+                    >
+                      Revert
+                    </Button>
+                    <Button onClick={handleFill}>Fill</Button>
+                  </div>
+                </div>
+
+                {/* Doctor Name */}
+                <div>
+                  <label className="font-medium">Doctor Name</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={record.doctor_name ?? ""}
+                      onChange={(e) =>
+                        handleChange("doctor_name", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("doctor_name")}
+                    >
+                      Revert
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Hospital Pubkey */}
+                <div>
+                  <label className="font-medium">Hospital Pubkey</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={record.hospital_pubkey ?? ""}
+                      onChange={(e) =>
+                        handleChange("hospital_pubkey", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("hospital_pubkey")}
+                    >
+                      Revert
+                    </Button>
+                    <Button onClick={handleFill}>Fill</Button>
+                  </div>
+                </div>
+
+                {/* Doctor ID */}
+                <div>
+                  <label className="font-medium">Doctor ID</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={record.doctor_id ?? ""}
+                      onChange={(e) =>
+                        handleChange("doctor_id", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("doctor_id")}
+                    >
+                      Revert
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Hospital Name */}
+                <div>
+                  <label className="font-medium">Hospital Name</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={record.hospital_name ?? ""}
+                      onChange={(e) =>
+                        handleChange("hospital_name", e.target.value)
+                      }
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("hospital_name")}
+                    >
+                      Revert
+                    </Button>
+                    <Button onClick={handleFill}>Fill</Button>
+                  </div>
+                </div>
+
+                {/* Empty placeholder (for symmetry) */}
+                <div></div>
+              </div>
+            </section>
+
+            {/* ──────────────── 📋 RECORD SECTION ──────────────── */}
+            <section>
+              <h2 className="font-bold mb-3 text-lg">Record Details</h2>
+
+              <div className="flex flex-col gap-4">
+                {/* Diagnosis */}
+                <div>
+                  <label className="font-medium">Diagnosis</label>
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={record.diagnosis ?? ""}
+                      onChange={(e) =>
+                        handleChange("diagnosis", e.target.value)
+                      }
+                      className="min-h-[80px] w-full"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("diagnosis")}
+                    >
+                      Revert
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Keywords */}
+                <div>
+                  <label className="font-medium">Keywords</label>
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={record.keywords ?? ""}
+                      onChange={(e) => handleChange("keywords", e.target.value)}
+                      className="min-h-[80px] w-full"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("keywords")}
+                    >
+                      Revert
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="font-medium">Description</label>
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={record.description ?? ""}
+                      onChange={(e) =>
+                        handleChange("description", e.target.value)
+                      }
+                      className="min-h-[120px] w-full"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleReset("description")}
+                    >
+                      Revert
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* ──────────────── 🖼️ PREVIEW SECTION ──────────────── */}
+            {previews.length > 0 && (
+              <section>
+                <h2 className="font-bold mb-3 ">Attached Preview</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {previews.map((src, i) => (
+                    <div
+                      key={i}
+                      className="relative w-full aspect-square border rounded overflow-hidden"
+                    >
+                      <Image
+                        src={src}
+                        alt={`Preview ${i}`}
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ──────────────── ⚙️ ACTION BUTTONS ──────────────── */}
+            <section className="mt-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button onClick={handleDownloadZip} className="flex-1">
+                  Download Updated ZIP
+                </Button>
+                <Button
+                  onClick={handleSubmitOnChain}
+                  disabled={!readyToSubmit}
+                  className="flex-1"
+                >
+                  Submit On-Chain
+                </Button>
+              </div>
+            </section>
           </div>
 
           {/* --- RENDER SUBMIT STATUS --- */}
-          {status && (
-            <p className="text-sm mt-4 whitespace-pre-wrap">{status}</p>
-          )}
+          {status && <p className=" mt-4 whitespace-pre-wrap">{status}</p>}
 
           {/* --- MULTI-SIGN OUTPUT (COPIED) --- */}
           {coSignBase64 && (
             <div className="mt-4 space-y-2">
-              <label className="text-sm font-medium">
+              <label className=" font-medium">
                 Base64 transaction (hospital-signed). Send to the patient to
                 co-sign &amp; submit:
               </label>

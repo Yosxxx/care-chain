@@ -1,6 +1,4 @@
 "use client";
-import { Bell } from "lucide-react";
-import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import dynamic from "next/dynamic";
 
 export default function NavBar() {
@@ -16,8 +14,6 @@ export default function NavBar() {
         <div className="font-bold text-2xl">LOGO</div>
         <div className="flex gap-x-5 items-center">
           <WalletMultiButton />
-          <Bell size={24} />
-          <AnimatedThemeToggler />
         </div>
       </main>
     </nav>
