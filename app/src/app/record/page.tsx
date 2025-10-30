@@ -92,7 +92,7 @@ export default function Page() {
               value={form.patient_pubkey}
               onChange={(e) => handleInput("patient_pubkey", e.target.value)}
             />
-            <Button size="icon">
+            <Button size="icon" variant={"outline"}>
               <QrCode className="h-4 w-4" />
             </Button>
           </div>
@@ -169,6 +169,7 @@ export default function Page() {
                     size="icon"
                     className="absolute top-1 right-1 h-6 w-6 p-0"
                     onClick={() => handleDeleteImage(i)}
+                    variant={"secondary"}
                   >
                     <X className="h-3 w-3" />
                   </Button>
@@ -178,7 +179,11 @@ export default function Page() {
           )}
         </div>
 
-        <Button onClick={handleDownloadZip} className="mt-2">
+        <Button
+          onClick={handleDownloadZip}
+          className="mt-2"
+          variant={"outline"}
+        >
           Download Zip
         </Button>
       </div>

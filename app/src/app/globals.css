@@ -267,7 +267,7 @@
 
 .wallet-adapter-button,
 .wallet-adapter-button-trigger {
-  @apply bg-card border border-sidebar-accent;
+  @apply bg-card border-sidebar-accent;
 }
 
 .wallet-adapter-button:hover:not([disabled]),
@@ -282,10 +282,16 @@
 .wallet-adapter-dropdown-list-item {
   @apply text-sm hover:bg-accent hover:text-accent-foreground;
 }
+.wallet-adapter-modal-button-close {
+  @apply bg-transparent;
+}
 
+.wallet-adapter-modal-list {
+  @apply flex flex-col;
+}
 /* Modal polish */
 .wallet-adapter-modal-wrapper {
-  @apply rounded-lg bg-background text-foreground;
+  @apply rounded-xs bg-background text-foreground;
 }
 
 .wallet-adapter-modal-button-close {

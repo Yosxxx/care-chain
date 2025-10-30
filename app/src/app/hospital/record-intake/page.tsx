@@ -33,6 +33,7 @@ import {
 import bs58 from "bs58";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBanner } from "@/components/status-banner";
+import { GeneralModal } from "@/components/general-modal";
 
 interface MedicalRecord {
   patient_pubkey: string;
@@ -633,11 +634,11 @@ export default function Page() {
       {/* ========== FORM VIEW ========== */}
       {view === "form" && (
         <div className="w-full mx-auto">
-          <header className="flex mb-5">
+          {/* <header className="flex mb-5">
             <h1 className="text-2xl font-architekt font-bold">
               Edit & Submit Record
             </h1>
-          </header>
+          </header> */}
 
           <Input
             id="zip-input"
@@ -900,17 +901,7 @@ export default function Page() {
                     <h2 className="font-bold mb-3">Attached Preview</h2>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {previews.map((src, i) => (
-                        <div
-                          key={i}
-                          className="relative w-full aspect-square border rounded-xs overflow-hidden"
-                        >
-                          <Image
-                            src={src}
-                            alt={`Preview ${i}`}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
+                        <ImagePreview key={i} src={src} />
                       ))}
                     </div>
                   </section>
@@ -923,6 +914,7 @@ export default function Page() {
                       onClick={handleDownloadZip}
                       className="flex-1"
                       disabled={isSubmitting}
+                      variant="outline"
                     >
                       Download Updated ZIP
                     </Button>
@@ -930,6 +922,7 @@ export default function Page() {
                       onClick={handleSubmitOnChain}
                       disabled={!readyToSubmit || isSubmitting}
                       className="flex-1"
+                      variant="outline"
                     >
                       {isSubmitting ? "Submitting..." : "Submit On-Chain"}
                     </Button>
@@ -954,5 +947,36 @@ export default function Page() {
         </div>
       )}
     </main>
+  );
+}
+
+function ImagePreview({ src }: { src: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <div
+        onClick={() => setOpen(true)}
+        className="relative w-full aspect-square border rounded-xs overflow-hidden cursor-pointer group"
+      >
+        <Image
+          src={src}
+          alt="Preview"
+          fill
+          className="object-cover transition-transform duration-200 group-hover:scale-105"
+        />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-sm font-medium">
+          View
+        </div>
+      </div>
+
+      <GeneralModal
+        open={open}
+        onOpenChange={setOpen}
+        disablePadding
+        size="lg"
+        image={src}
+      />
+    </>
   );
 }
