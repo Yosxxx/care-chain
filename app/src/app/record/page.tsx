@@ -18,7 +18,6 @@ export default function Page() {
     hospital_id: "",
     hospital_pubkey: "",
     hospital_name: "",
-    doctor_id: "",
     doctor_name: "",
     diagnosis: "",
     keywords: "",
@@ -57,7 +56,6 @@ export default function Page() {
       hospital_id: "",
       hospital_pubkey: null,
       hospital_name: null,
-      doctor_id: form.doctor_id,
       doctor_name: form.doctor_name,
       diagnosis: form.diagnosis,
       keywords: form.keywords,
@@ -96,15 +94,6 @@ export default function Page() {
               <QrCode className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-
-        {/* Doctor Info */}
-        <div>
-          <Label className="mb-2">Doctor ID</Label>
-          <Input
-            value={form.doctor_id}
-            onChange={(e) => handleInput("doctor_id", e.target.value)}
-          />
         </div>
 
         <div>

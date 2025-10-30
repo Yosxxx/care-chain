@@ -1,8 +1,14 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
 
-import { useState, useMemo } from "react";
-import { Search, ChevronsUpDown, ExternalLink, QrCodeIcon } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import {
+  Search,
+  ChevronsUpDown,
+  ExternalLink,
+  QrCodeIcon,
+  X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,9 +31,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import sodium from "libsodium-wrappers";
+import JSZip from "jszip";
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
 import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
-import { X } from "lucide-react";
 import { toast } from "sonner";
 import { FilterButton } from "@/components/filter-button";
 
@@ -104,15 +110,12 @@ export default function Page() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasGrant, setHasGrant] = useState<boolean | null>(null);
-
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [viewerMime, setViewerMime] = useState<string | null>(null);
-  const [textPreview, setTextPreview] = useState<string | null>(null);
-  const [openViewer, setOpenViewer] = useState(false);
+  const [downloadAllowed, setDownloadAllowed] = useState<
+    Record<string, boolean>
+  >({});
 
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
 
-  // Pagination
   const [page, setPage] = useState(1);
   const perPage = 5;
   const totalPages = Math.ceil(records.length / perPage);
@@ -123,12 +126,10 @@ export default function Page() {
 
   const disabled = !ready || !program || !hospitalWallet;
 
-  // --- QR Scanner states ---
   const [scanning, setScanning] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const devices = useDevices();
 
-  // --- QR scan handler ---
   const handleScan = (result: unknown) => {
     if (!result) return;
     const text =
@@ -159,7 +160,6 @@ export default function Page() {
       const pAcc = await program!.account.patient.fetchNullable(patientPda);
       if (!pAcc) throw new Error("Patient not registered.");
 
-      const hospitalPda = findHospitalPda(programId, hospitalWallet!);
       const grantReadPda = findGrantReadPda(
         programId,
         patientPda,
@@ -210,12 +210,9 @@ export default function Page() {
       }
 
       setRecords(out.reverse());
-
-      // ✅ Success handling
       setStatus("✅ Records fetched successfully.");
       toast.success("Records fetched successfully.");
     } catch (e: any) {
-      // ❌ Error handling
       const message = e.message || String(e);
       setErr(message);
       toast.error(message);
@@ -225,57 +222,90 @@ export default function Page() {
     }
   }
 
-  async function handleDecryptAndDownload(rec: Rec) {
-    try {
-      setStatus("Decrypting...");
+  useEffect(() => {
+    async function autoDecryptCheck() {
+      if (!records.length) return;
       await sodium.ready;
 
+      for (const rec of records) {
+        try {
+          const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
+          const chunkSize = meta.chunk_size ?? 1024 * 1024;
+          const nonceBase = Uint8Array.from(
+            Buffer.from(meta.nonce_base, "base64")
+          );
+          const aad = new TextEncoder().encode(meta.aad || "");
+
+          const unwrap = await (
+            await fetch("/api/unwrap-dek", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                wrapped_dek_b64: meta.wrapped_dek,
+                recordId: meta.aad,
+              }),
+            })
+          ).json();
+
+          const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
+          const res = await fetch(ipfsGateway(rec.cidEnc));
+          const encBuf = new Uint8Array(await res.arrayBuffer());
+          const chunks: Uint8Array[] = [];
+          const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+          let off = 0,
+            idx = 0;
+          while (off < encBuf.length) {
+            const clen = Math.min(chunkSize + TAG, encBuf.length - off);
+            const cipher = encBuf.subarray(off, off + clen);
+            off += clen;
+            const nonce = deriveNonce(nonceBase, idx++);
+            const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+              null,
+              cipher,
+              aad,
+              nonce,
+              DEK
+            );
+            chunks.push(plain);
+          }
+
+          const merged = new Uint8Array(
+            chunks.reduce((n, c) => n + c.length, 0)
+          );
+          let p = 0;
+          for (const c of chunks) {
+            merged.set(c, p);
+            p += c.length;
+          }
+
+          const blob = new Blob([merged], { type: meta.original_content_type });
+          const zip = await JSZip.loadAsync(blob);
+          const fileNames = Object.keys(zip.files);
+          const extraFiles = fileNames.filter(
+            (f) => f !== "medical_record.json"
+          );
+
+          setDownloadAllowed((prev) => ({
+            ...prev,
+            [rec.pda]: extraFiles.length > 0,
+          }));
+        } catch {
+          setDownloadAllowed((prev) => ({ ...prev, [rec.pda]: false }));
+        }
+      }
+    }
+
+    autoDecryptCheck();
+  }, [records]);
+
+  async function handleDecryptAndDownload(rec: Rec) {
+    try {
+      setStatus("Downloading...");
       const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
-      const chunkSize = meta.chunk_size ?? 1024 * 1024;
-      const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
-      const aad = new TextEncoder().encode(meta.aad || "");
-
-      const unwrap = await (
-        await fetch("/api/unwrap-dek", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            wrapped_dek_b64: meta.wrapped_dek,
-            recordId: meta.aad,
-          }),
-        })
-      ).json();
-
-      const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
       const res = await fetch(ipfsGateway(rec.cidEnc));
-      const encBuf = new Uint8Array(await res.arrayBuffer());
-      const chunks: Uint8Array[] = [];
-      const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
-      let off = 0,
-        idx = 0;
-      while (off < encBuf.length) {
-        const clen = Math.min(chunkSize + TAG, encBuf.length - off);
-        const cipher = encBuf.subarray(off, off + clen);
-        off += clen;
-        const nonce = deriveNonce(nonceBase, idx++);
-        const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null,
-          cipher,
-          aad,
-          nonce,
-          DEK
-        );
-        chunks.push(plain);
-      }
-
-      const merged = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-      let p = 0;
-      for (const c of chunks) {
-        merged.set(c, p);
-        p += c.length;
-      }
-
-      const blob = new Blob([merged], { type: meta.original_content_type });
+      const blob = new Blob([await res.arrayBuffer()], {
+        type: meta.original_content_type,
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -299,21 +329,17 @@ export default function Page() {
       {/* --- STATUS BANNERS --- */}
       <div className="space-y-2 my-2">
         {err && <StatusBanner type="error">❌ {err}</StatusBanner>}
-
         {status && !err && status.toLowerCase().includes("loading") && (
           <StatusBanner type="info">⏳ {status}</StatusBanner>
         )}
-
         {status && !err && status.startsWith("✅") && (
           <StatusBanner type="success">{status}</StatusBanner>
         )}
-
         {hasGrant === false && (
           <StatusBanner type="warning">
             ⚠️ No active read grant. Ask patient to authorize this hospital.
           </StatusBanner>
         )}
-
         {hasGrant && records.length === 0 && !loading && (
           <StatusBanner type="info">
             ℹ️ No records found for this patient.
@@ -321,14 +347,13 @@ export default function Page() {
         )}
       </div>
 
+      {/* Search and Filters */}
       <div className="mt-2 flex gap-x-3 mb-5">
         <Input
           placeholder="Enter patient wallet (base58)"
           value={patientInput}
           onChange={(e) => setPatientInput(e.target.value)}
         />
-
-        {/* Search button */}
         <Button
           onClick={fetchPatientRecords}
           disabled={disabled || loading || !patientInput.trim()}
@@ -336,8 +361,6 @@ export default function Page() {
         >
           {loading ? "Loading..." : "Search"}
         </Button>
-
-        {/* Clear button */}
         <Button
           onClick={() => {
             setPatientInput("");
@@ -352,8 +375,6 @@ export default function Page() {
         >
           Clear
         </Button>
-
-        {/* Filter placeholder */}
         <FilterButton
           options={[
             { label: "All", value: null },
@@ -364,8 +385,6 @@ export default function Page() {
           selected={selectedFilter}
           onChange={(v) => setSelectedFilter(v)}
         />
-
-        {/* QR Scan button */}
         <Button variant="outline" onClick={() => setScanning(true)}>
           <QrCodeIcon />
         </Button>
@@ -381,36 +400,21 @@ export default function Page() {
                   <div className="font-semibold truncate text-sm">
                     {rec.diagnosis || "Untitled Diagnosis"}
                   </div>
-
                   {rec.keywords && (
                     <div className="text-sm text-muted-foreground space-x-2">
                       <span>{rec.keywords}</span>
                     </div>
                   )}
                 </div>
-
                 <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
                   {new Date(rec.createdAt).toLocaleDateString()}
                 </div>
-
                 <ChevronsUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               </CollapsibleTrigger>
 
               <CollapsibleContent className="mt-4 space-y-4 text-sm">
-                {/* Two-row metadata layout */}
+                {/* Two-row metadata */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs font-medium">Hospital ID</div>
-                    <div className="font-mono border p-2 rounded-xs">
-                      {rec.hospital_id || "N/A"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium">Doctor ID</div>
-                    <div className="font-mono border p-2 rounded-xs">
-                      {rec.doctor_id || "N/A"}
-                    </div>
-                  </div>
                   <div>
                     <div className="text-xs font-medium">Hospital Name</div>
                     <div className="font-mono border p-2 rounded-xs">
@@ -425,17 +429,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* Pubkey Row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs font-medium">Hospital Pubkey</div>
-                    <div className="font-mono border p-2 rounded-xs break-all">
-                      {rec.hospital}
-                    </div>
-                  </div>
-                  <div />
-                </div>
-
                 <Separator className="my-2" />
 
                 {/* Description */}
@@ -448,7 +441,7 @@ export default function Page() {
                   </div>
                 )}
 
-                {/* Solscan Link */}
+                {/* Solscan link */}
                 {rec.txSignature && (
                   <div>
                     <div className="text-xs font-medium">
@@ -465,13 +458,18 @@ export default function Page() {
                   </div>
                 )}
 
+                <Separator className="my-2" />
+
                 {/* Action */}
                 <div className="pt-3 border-t mt-3">
                   <Button
                     onClick={() => handleDecryptAndDownload(rec)}
                     variant="secondary"
+                    disabled={!downloadAllowed[rec.pda]}
                   >
-                    Download Decrypted File
+                    {downloadAllowed[rec.pda]
+                      ? "Download Decrypted File"
+                      : "No Attachments"}
                   </Button>
                 </div>
               </CollapsibleContent>
@@ -480,6 +478,7 @@ export default function Page() {
         </div>
       )}
 
+      {/* Pagination */}
       {records.length > perPage && (
         <Pagination>
           <PaginationContent>
@@ -492,7 +491,6 @@ export default function Page() {
                 }}
               />
             </PaginationItem>
-
             {Array.from({ length: totalPages }).map((_, i) => (
               <PaginationItem key={i}>
                 <PaginationLink
@@ -507,7 +505,6 @@ export default function Page() {
                 </PaginationLink>
               </PaginationItem>
             ))}
-
             <PaginationItem>
               <PaginationNext
                 href="#"
@@ -521,7 +518,7 @@ export default function Page() {
         </Pagination>
       )}
 
-      {/* ─────────────── QR MODAL SCANNER ─────────────── */}
+      {/* QR Scanner */}
       {scanning && (
         <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center">
           <div className="w-[320px] aspect-square bg-black rounded-lg overflow-hidden border-4 border-white relative">
@@ -537,7 +534,6 @@ export default function Page() {
               }}
             />
           </div>
-
           {devices.length > 1 && (
             <select
               className="mt-3 text-sm bg-white dark:bg-gray-800 p-2 rounded"
@@ -552,7 +548,6 @@ export default function Page() {
               ))}
             </select>
           )}
-
           <Button
             variant="destructive"
             className="mt-4"

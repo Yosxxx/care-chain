@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import sodium from "libsodium-wrappers";
+import JSZip from "jszip";
 import { useProgram } from "@/hooks/useProgram";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
-import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,12 +27,6 @@ import {
 import { ChevronsUpDown, ExternalLink } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
-const WalletMultiButton = dynamic(
-  async () =>
-    (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
-  { ssr: false }
-);
-
 type Rec = {
   seq: number;
   pda: string;
@@ -41,10 +35,8 @@ type Rec = {
   hospital: string;
   sizeBytes: number;
   createdAt: string;
-  hospital_id: string;
   hospital_name: string;
   doctor_name: string;
-  doctor_id: string;
   diagnosis: string;
   keywords: string;
   description: string;
@@ -66,6 +58,9 @@ export default function Page() {
   const { program, programId, ready } = useProgram();
 
   const [records, setRecords] = useState<Rec[]>([]);
+  const [downloadAllowed, setDownloadAllowed] = useState<
+    Record<string, boolean>
+  >({});
   const [patientOk, setPatientOk] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
 
@@ -73,7 +68,6 @@ export default function Page() {
   const [filterMode, setFilterMode] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const perPage = 10;
-  const totalPages = Math.ceil(records.length / perPage);
 
   // ================== FETCH ON-CHAIN RECORDS ==================
   useEffect(() => {
@@ -81,6 +75,7 @@ export default function Page() {
       setErr("");
       setRecords([]);
       setPatientOk(null);
+      setDownloadAllowed({});
 
       if (!ready || !program || !publicKey) return;
 
@@ -122,10 +117,8 @@ export default function Page() {
             hospital: rec.hospital.toBase58(),
             sizeBytes: Number(rec.sizeBytes),
             createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
-            hospital_id: rec.hospitalId,
             hospital_name: rec.hospitalName,
             doctor_name: rec.doctorName,
-            doctor_id: rec.doctorId,
             diagnosis: rec.diagnosis,
             keywords: rec.keywords,
             description: rec.description,
@@ -140,7 +133,90 @@ export default function Page() {
     })();
   }, [ready, program, programId.toBase58(), publicKey?.toBase58()]);
 
-  // ================== FILTERING + SORTING ==================
+  // ================== AUTO DECRYPT & VALIDATE ==================
+  useEffect(() => {
+    if (!records.length) return;
+    (async () => {
+      await sodium.ready;
+      for (const rec of records) {
+        try {
+          const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
+          const unwrap = await (
+            await fetch("/api/unwrap-dek", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                wrapped_dek_b64: meta.wrapped_dek,
+                recordId: meta.aad,
+              }),
+            })
+          ).json();
+
+          if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
+          const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
+          const nonceBase = Uint8Array.from(
+            Buffer.from(meta.nonce_base, "base64")
+          );
+          const aad = new TextEncoder().encode(meta.aad || "");
+          const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
+
+          const res = await fetch(ipfsGateway(rec.cidEnc));
+          const encBuf = new Uint8Array(await res.arrayBuffer());
+          const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+
+          let off = 0;
+          let idx = 0;
+          const chunks: Uint8Array[] = [];
+
+          while (off < encBuf.length) {
+            const clen = Math.min(chunkSize + TAG, encBuf.length - off);
+            const cipher = encBuf.subarray(off, off + clen);
+            off += clen;
+            const nonce = new Uint8Array(nonceBase);
+            nonce[nonce.length - 4] = idx & 0xff;
+            nonce[nonce.length - 3] = (idx >> 8) & 0xff;
+            nonce[nonce.length - 2] = (idx >> 16) & 0xff;
+            nonce[nonce.length - 1] = (idx >> 24) & 0xff;
+            idx++;
+
+            const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+              null,
+              cipher,
+              aad,
+              nonce,
+              DEK
+            );
+            chunks.push(plain);
+          }
+
+          const merged = new Uint8Array(
+            chunks.reduce((n, c) => n + c.length, 0)
+          );
+          let p = 0;
+          for (const c of chunks) {
+            merged.set(c, p);
+            p += c.length;
+          }
+
+          const blob = new Blob([merged], { type: meta.original_content_type });
+          const zip = await JSZip.loadAsync(blob);
+          const fileNames = Object.keys(zip.files);
+          const extraFiles = fileNames.filter(
+            (f) => f !== "medical_record.json"
+          );
+
+          setDownloadAllowed((prev) => ({
+            ...prev,
+            [rec.pda]: extraFiles.length > 0,
+          }));
+        } catch {
+          setDownloadAllowed((prev) => ({ ...prev, [rec.pda]: false }));
+        }
+      }
+    })();
+  }, [records]);
+
+  // ================== FILTERING + PAGINATION ==================
   const filteredRecords = useMemo(() => {
     let filtered = records.filter((r) =>
       (r.diagnosis + r.keywords + r.description)
@@ -166,6 +242,7 @@ export default function Page() {
     return filtered;
   }, [records, search, filterMode]);
 
+  const totalPages = Math.ceil(filteredRecords.length / perPage);
   const startIndex = (page - 1) * perPage;
   const paginated = filteredRecords.slice(startIndex, startIndex + perPage);
 
@@ -174,7 +251,6 @@ export default function Page() {
     try {
       await sodium.ready;
       const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
-
       const unwrap = await (
         await fetch("/api/unwrap-dek", {
           method: "POST",
@@ -186,9 +262,7 @@ export default function Page() {
         })
       ).json();
 
-      if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
       const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
-
       const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
       const aad = new TextEncoder().encode(meta.aad || "");
       const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
@@ -246,11 +320,11 @@ export default function Page() {
 
   // ================== UI ==================
   return (
-    <main className="space-y-6 my-6">
+    <main className="space-y-6 my-5">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">My Records</h1>
-          <p className="">View and download your medical records</p>
+          <p>View and download your medical records</p>
         </div>
       </div>
 
@@ -264,7 +338,6 @@ export default function Page() {
           This wallet is not registered as a patient yet.
         </div>
       )}
-
       {err && <p className="text-red-600 text-sm">{err}</p>}
 
       <div className="flex gap-2">
@@ -302,75 +375,36 @@ export default function Page() {
                 <div className="font-semibold truncate text-sm">
                   {rec.diagnosis || "Untitled Diagnosis"}
                 </div>
-
                 {rec.keywords && (
                   <div className="text-sm text-muted-foreground space-x-2">
                     <span>{rec.keywords}</span>
                   </div>
                 )}
               </div>
-
               <div className="text-sm text-muted-foreground text-right whitespace-nowrap">
                 {new Date(rec.createdAt).toLocaleDateString()}
               </div>
-
               <ChevronsUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </CollapsibleTrigger>
 
             <CollapsibleContent className="mt-4 space-y-4 text-sm">
-              {/* Two-row metadata layout */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs  font-medium text-[-10px]">
-                    Hospital ID
-                  </div>
-                  <div className="font-mono border p-2 rounded-xs">
-                    {rec.hospital_id || "N/A"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs  font-medium text-[-10px]">
-                    Doctor ID
-                  </div>
-                  <div className="font-mono border p-2 rounded-xs">
-                    {rec.doctor_id || "N/A"}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs  font-medium text-[-10px]">
-                    Hospital Name
-                  </div>
+                  <div className="text-xs font-medium">Hospital Name</div>
                   <div className="font-mono border p-2 rounded-xs">
                     {rec.hospital_name || "N/A"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs  font-medium text-[-10px]">
-                    Doctor Name
-                  </div>
+                  <div className="text-xs font-medium">Doctor Name</div>
                   <div className="font-mono border p-2 rounded-xs">
                     {rec.doctor_name || "N/A"}
                   </div>
                 </div>
               </div>
 
-              {/* Pubkey Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs  font-medium text-[-10px]">
-                    Hospital Pubkey
-                  </div>
-                  <div className="font-mono border p-2 rounded-xs break-all">
-                    {rec.hospital}
-                  </div>
-                </div>
-                <div />
-              </div>
-
               <Separator className="my-2" />
 
-              {/* Description */}
               {rec.description && (
                 <div>
                   <div className="text-xs font-medium">Description</div>
@@ -380,10 +414,9 @@ export default function Page() {
                 </div>
               )}
 
-              {/* Solscan Link */}
               {rec.txSignature && (
                 <div>
-                  <div className="text-xs  font-medium">
+                  <div className="text-xs font-medium">
                     Transaction Signature
                   </div>
                   <a
@@ -397,10 +430,14 @@ export default function Page() {
                 </div>
               )}
 
-              {/* Action */}
               <div className="pt-3 border-t mt-3">
-                <Button onClick={() => handleDecryptAndDownload(rec)}>
-                  Download Decrypted File
+                <Button
+                  onClick={() => handleDecryptAndDownload(rec)}
+                  disabled={!downloadAllowed[rec.pda]}
+                >
+                  {downloadAllowed[rec.pda]
+                    ? "Download Decrypted File"
+                    : "No Attachments"}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -408,8 +445,9 @@ export default function Page() {
         ))}
       </div>
 
-      {records.length > perPage && (
-        <Pagination>
+      {/* Pagination */}
+      {filteredRecords.length > perPage && (
+        <Pagination className="mb-5">
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious

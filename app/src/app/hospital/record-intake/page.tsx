@@ -37,10 +37,8 @@ import { GeneralModal } from "@/components/general-modal";
 
 interface MedicalRecord {
   patient_pubkey: string;
-  hospital_id: string | null;
   hospital_pubkey: string | null;
   hospital_name: string | null;
-  doctor_id: string;
   doctor_name: string;
   diagnosis: string;
   keywords: string;
@@ -48,7 +46,6 @@ interface MedicalRecord {
 }
 
 interface HospitalData {
-  hospital_id: string;
   name: string;
   authority_pubkey: string;
 }
@@ -294,7 +291,7 @@ export default function Page() {
           prev
             ? {
                 ...prev,
-                hospital_id: hospitalData.hospital_id,
+
                 hospital_pubkey: hospitalData.authority_pubkey,
                 hospital_name: hospitalData.name,
               }
@@ -319,7 +316,7 @@ export default function Page() {
     if (!record || !hospitalData) return;
     setRecord({
       ...record,
-      hospital_id: hospitalData.hospital_id,
+
       hospital_pubkey: hospitalData.authority_pubkey,
       hospital_name: hospitalData.name,
     });
@@ -468,10 +465,10 @@ export default function Page() {
           kmsRef,
           1,
           { xChaCha20: {} },
-          record.hospital_id || "",
+
           record.hospital_name || "",
           record.doctor_name || "",
-          record.doctor_id || "",
+
           record.diagnosis || "",
           record.keywords || "",
           record.description || ""
@@ -547,11 +544,9 @@ export default function Page() {
   }[] = [
     // ... (This array remains unchanged) ...
     { key: "patient_pubkey", label: "Patient Pubkey" },
-    { key: "hospital_id", label: "Hospital ID", fillable: true },
     { key: "hospital_pubkey", label: "Hospital Pubkey", fillable: true },
     { key: "hospital_name", label: "Hospital Name", fillable: true },
     { key: "doctor_name", label: "Doctor Name" },
-    { key: "doctor_id", label: "Doctor ID" },
     { key: "diagnosis", label: "Diagnosis" },
     { key: "keywords", label: "Keywords" },
     { key: "description", label: "Description", textarea: true },
@@ -737,29 +732,7 @@ export default function Page() {
                     Doctor & Hospital Details
                   </h2>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Hospital ID */}
-                    <div>
-                      <label className="font-medium">Hospital ID</label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={record.hospital_id ?? ""}
-                          onChange={(e) =>
-                            handleChange("hospital_id", e.target.value)
-                          }
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={() => handleReset("hospital_id")}
-                        >
-                          Revert
-                        </Button>
-                        <Button onClick={handleFill} variant="secondary">
-                          Fill
-                        </Button>
-                      </div>
-                    </div>
-
+                  <div className="flex flex-col gap-y-5">
                     {/* Doctor Name */}
                     <div>
                       <label className="font-medium">Doctor Name</label>
@@ -797,25 +770,6 @@ export default function Page() {
                         </Button>
                         <Button onClick={handleFill} variant="secondary">
                           Fill
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Doctor ID */}
-                    <div>
-                      <label className="font-medium">Doctor ID</label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={record.doctor_id ?? ""}
-                          onChange={(e) =>
-                            handleChange("doctor_id", e.target.value)
-                          }
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={() => handleReset("doctor_id")}
-                        >
-                          Revert
                         </Button>
                       </div>
                     </div>
