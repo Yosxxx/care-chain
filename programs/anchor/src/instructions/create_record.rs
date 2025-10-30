@@ -42,11 +42,7 @@ pub fn record_create(
         RecordError::PayerMustBePatient
     );
 
-    // 4) Grant still valid
     let now = Clock::get()?.unix_timestamp;
-    if let Some(exp) = ctx.accounts.grant_write.expires_at {
-        require!(exp > now, RecordError::GrantExpired);
-    }
 
     // 5) Trim inputs
     let cid_trim = cid_enc.trim();

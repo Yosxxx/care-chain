@@ -21,3 +21,9 @@ pub mod revoke_grant;
 
 pub use set_paused::*;
 pub mod set_paused;
+
+pub use add_trustee::*;
+pub mod add_trustee;
+
+pub use revoke_trustee::*;
+pub mod revoke_trustee;

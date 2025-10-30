@@ -8,6 +8,63 @@
   },
   "instructions": [
     {
+      "name": "add_trustee",
+      "discriminator": [
+        157,
+        160,
+        215,
+        252,
+        120,
+        158,
+        153,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "patient",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "trustee",
+          "signer": true
+        },
+        {
+          "name": "trustee_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  117,
+                  115,
+                  116,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              },
+              {
+                "kind": "account",
+                "path": "trustee"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "create_record",
       "discriminator": [
         116,
@@ -326,6 +383,35 @@
           "name": "grantee"
         },
         {
+          "name": "trustee_account",
+          "optional": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  117,
+                  115,
+                  116,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -334,12 +420,6 @@
         {
           "name": "scope",
           "type": "u8"
-        },
-        {
-          "name": "expires_at",
-          "type": {
-            "option": "i64"
-          }
         }
       ]
     },
@@ -676,6 +756,84 @@
       "args": []
     },
     {
+      "name": "revoke_trustee",
+      "discriminator": [
+        100,
+        117,
+        208,
+        23,
+        86,
+        2,
+        222,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "patient",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  116,
+                  105,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
+              }
+            ]
+          }
+        },
+        {
+          "name": "trustee_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  117,
+                  115,
+                  116,
+                  101,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "patient"
+              },
+              {
+                "kind": "account",
+                "path": "trustee_account.trustee",
+                "account": "Trustee"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "set_paused",
       "discriminator": [
         91,
@@ -883,6 +1041,19 @@
         146,
         139
       ]
+    },
+    {
+      "name": "Trustee",
+      "discriminator": [
+        206,
+        26,
+        220,
+        171,
+        26,
+        39,
+        92,
+        219
+      ]
     }
   ],
   "events": [
@@ -1002,143 +1173,77 @@
         198,
         82
       ]
+    },
+    {
+      "name": "TrusteeAdded",
+      "discriminator": [
+        180,
+        150,
+        32,
+        246,
+        213,
+        96,
+        119,
+        55
+      ]
+    },
+    {
+      "name": "TrusteeGrantCreated",
+      "discriminator": [
+        215,
+        177,
+        179,
+        48,
+        139,
+        43,
+        228,
+        189
+      ]
+    },
+    {
+      "name": "TrusteeRevoked",
+      "discriminator": [
+        50,
+        243,
+        213,
+        201,
+        19,
+        73,
+        96,
+        252
+      ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "Paused",
-      "msg": "Program is paused"
+      "name": "AlreadyRevoked",
+      "msg": "Trustee is already revoked"
     },
     {
       "code": 6001,
-      "name": "UploaderNotHospitalAuthority",
-      "msg": "Uploader must be the hospital authority"
+      "name": "Unauthorized",
+      "msg": "Unauthorized action — only patient can modify trustees"
     },
     {
       "code": 6002,
-      "name": "GrantRevoked",
-      "msg": "WRITE grant is revoked"
+      "name": "NotFound",
+      "msg": "Trustee not found"
     },
     {
       "code": 6003,
-      "name": "GrantExpired",
-      "msg": "WRITE grant is expired"
+      "name": "Revoked",
+      "msg": "Trustee is revoked"
     },
     {
       "code": 6004,
-      "name": "GrantMismatch",
-      "msg": "WRITE grant does not match patient/hospital"
+      "name": "ReadOnly",
+      "msg": "Trustee can only issue READ access"
     },
     {
       "code": 6005,
-      "name": "BadSeq",
-      "msg": "Bad sequence number"
-    },
-    {
-      "code": 6006,
-      "name": "SeqOverflow",
-      "msg": "Sequence overflow"
-    },
-    {
-      "code": 6007,
-      "name": "EmptyCidEnc",
-      "msg": "cid_enc is empty"
-    },
-    {
-      "code": 6008,
-      "name": "EmptyMime",
-      "msg": "meta_mime is empty"
-    },
-    {
-      "code": 6009,
-      "name": "SizeZero",
-      "msg": "size_bytes must be > 0"
-    },
-    {
-      "code": 6010,
-      "name": "KmsRefRequired",
-      "msg": "kms_ref must be non-empty when edek_root_algo=Kms"
-    },
-    {
-      "code": 6011,
-      "name": "EdekPatientMissing",
-      "msg": "edek_for_patient is empty"
-    },
-    {
-      "code": 6012,
-      "name": "EdekHospitalMissing",
-      "msg": "edek_for_hospital is empty"
-    },
-    {
-      "code": 6013,
-      "name": "CidTooLong",
-      "msg": "cid_enc too long"
-    },
-    {
-      "code": 6014,
-      "name": "MimeTooLong",
-      "msg": "meta_mime too long"
-    },
-    {
-      "code": 6015,
-      "name": "MetaCidTooLong",
-      "msg": "meta_cid too long"
-    },
-    {
-      "code": 6016,
-      "name": "NoteTooLong",
-      "msg": "note too long"
-    },
-    {
-      "code": 6017,
-      "name": "KmsRefTooLong",
-      "msg": "kms_ref too long"
-    },
-    {
-      "code": 6018,
-      "name": "HospitalIdTooLong",
-      "msg": "Hospital ID too long"
-    },
-    {
-      "code": 6019,
-      "name": "HospitalNameTooLong",
-      "msg": "Hospital name too long"
-    },
-    {
-      "code": 6020,
-      "name": "DoctorNameTooLong",
-      "msg": "Doctor name too long"
-    },
-    {
-      "code": 6021,
-      "name": "DoctorIdTooLong",
-      "msg": "Doctor ID too long"
-    },
-    {
-      "code": 6022,
-      "name": "DiagnosisTooLong",
-      "msg": "Diagnosis too long"
-    },
-    {
-      "code": 6023,
-      "name": "KeywordsTooLong",
-      "msg": "Keywords too long"
-    },
-    {
-      "code": 6024,
-      "name": "DescriptionTooLong",
-      "msg": "Description too long"
-    },
-    {
-      "code": 6025,
-      "name": "PayerMustBePatient",
-      "msg": "Payer must be Patient"
-    },
-    {
-      "code": 6026,
-      "name": "RecordMismatch",
-      "msg": "Record linkage mismatch"
+      "name": "InvalidScope",
+      "msg": "Invalid scope for trustee"
     }
   ],
   "types": [
@@ -1229,18 +1334,16 @@
             "type": "u8"
           },
           {
-            "name": "expires_at",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
             "name": "created_by",
             "type": "pubkey"
           },
           {
             "name": "created_at",
             "type": "i64"
+          },
+          {
+            "name": "via_trustee",
+            "type": "bool"
           },
           {
             "name": "revoked",
@@ -1279,12 +1382,6 @@
           {
             "name": "scope",
             "type": "u8"
-          },
-          {
-            "name": "expires_at",
-            "type": {
-              "option": "i64"
-            }
           },
           {
             "name": "created_by",
@@ -1715,6 +1812,123 @@
           {
             "name": "seq",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Trustee",
+      "docs": [
+        "PDA: [b\"trustee\", patient, trustee]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "trustee",
+            "type": "pubkey"
+          },
+          {
+            "name": "added_by",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "revoked",
+            "type": "bool"
+          },
+          {
+            "name": "revoked_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TrusteeAdded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "trustee",
+            "type": "pubkey"
+          },
+          {
+            "name": "added_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TrusteeGrantCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "grant",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "grantee",
+            "type": "pubkey"
+          },
+          {
+            "name": "trustee",
+            "type": "pubkey"
+          },
+          {
+            "name": "scope",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TrusteeRevoked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "trustee_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "patient",
+            "type": "pubkey"
+          },
+          {
+            "name": "trustee",
+            "type": "pubkey"
+          },
+          {
+            "name": "revoked_at",
+            "type": "i64"
           }
         ]
       }

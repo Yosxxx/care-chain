@@ -1,43 +1,32 @@
-use crate::errors::AccessError;
-use crate::event::GrantCreated;
+use crate::errors::{AccessError, TrusteeError};
+use crate::event::{GrantCreated, TrusteeGrantCreated};
 use crate::states::*;
 use anchor_lang::prelude::*;
 
-pub fn access_grant(
-    ctx: Context<GrantAccess>,
-    scope: u8,
-    duration_sec: Option<i64>, // CHANGED: This is now a duration, not an absolute time
-) -> Result<()> {
-    require_keys_eq!(
-        ctx.accounts.patient.patient_pubkey,
-        ctx.accounts.authority.key(),
-        AccessError::UnauthorizedGrant
-    );
+pub fn access_grant(ctx: Context<GrantAccess>, scope: u8) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let authority = ctx.accounts.authority.key();
+    let patient_pk = ctx.accounts.patient.patient_pubkey;
+
+    let is_patient = authority == patient_pk;
+    let is_trustee = ctx.accounts.trustee_account.is_some();
+
+    require!(is_patient || is_trustee, AccessError::UnauthorizedGrant);
+
+    if is_trustee {
+        require!(scope == SCOPE_READ, TrusteeError::ReadOnly);
+    }
 
     let allowed = SCOPE_READ | SCOPE_WRITE | SCOPE_ADMIN;
-    require!(scope != 0 && (scope & !allowed) == 0, AccessError::InvalidScope);
-
-    let now = Clock::get()?.unix_timestamp;
-
-    // --- LOGIC FLIPPED ---
-    // 1. We now receive a duration, not an absolute timestamp.
-    // 2. We calculate the absolute expires_at timestamp on-chain.
-    let final_expires_at: Option<i64> = if let Some(duration) = duration_sec {
-        // 3. The duration must be a positive number of seconds.
-        require!(duration > 0, AccessError::BadExpiry);
-        // 4. Calculate the final absolute time.
-        Some(now + duration)
-    } else {
-        // None means the grant is permanent (never expires).
-        None
-    };
-    // --- END OF CHANGE ---
+    require!(
+        scope != 0 && (scope & !allowed) == 0,
+        AccessError::InvalidScope
+    );
 
     let grant = &mut ctx.accounts.grant;
     grant.patient = ctx.accounts.patient.key();
     grant.grantee = ctx.accounts.grantee.key();
     grant.scope = scope;
-    grant.expires_at = final_expires_at; // CHANGED: Store the calculated absolute time
 
     grant.created_by = ctx.accounts.authority.key();
     grant.created_at = now;
@@ -47,21 +36,31 @@ pub fn access_grant(
 
     grant.bump = ctx.bumps.grant;
 
-    emit!(GrantCreated {
-        grant: grant.key(),
-        patient: grant.patient,
-        grantee: grant.grantee,
-        scope,
-        expires_at: final_expires_at, // CHANGED: Emit the calculated absolute time
-        created_by: grant.created_by,
-        created_at: now,
-    });
+    if is_trustee {
+        emit!(TrusteeGrantCreated {
+            grant: grant.key(),
+            patient: grant.patient,
+            grantee: grant.grantee,
+            trustee: authority,
+            scope,
+            created_at: now,
+        });
+    } else {
+        emit!(GrantCreated {
+            grant: grant.key(),
+            patient: grant.patient,
+            grantee: grant.grantee,
+            scope,
+            created_by: authority,
+            created_at: now,
+        });
+    }
 
     Ok(())
 }
 
 #[derive(Accounts)]
-#[instruction(scope: u8, duration_sec: Option<i64>)] // CHANGED: Renamed from expires_at
+#[instruction(scope: u8)]
 pub struct GrantAccess<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -88,6 +87,13 @@ pub struct GrantAccess<'info> {
     )]
     pub grant: Account<'info, Grant>,
     pub grantee: SystemAccount<'info>,
+
+    #[account(
+        seeds = [SEED_TRUSTEE, patient.patient_pubkey.key().as_ref(), authority.key().as_ref()],
+        bump = trustee_account.bump,
+        constraint = !trustee_account.revoked @ TrusteeError::Revoked
+    )]
+    pub trustee_account: Option<Account<'info, Trustee>>,
 
     pub system_program: Program<'info, System>,
 }

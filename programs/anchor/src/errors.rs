@@ -113,3 +113,24 @@ pub enum AccessError {
     #[msg("Only the patient (owner) may revoke this grant")]
     UnauthorizedRevoke,
 }
+
+#[error_code]
+pub enum TrusteeError {
+    #[msg("Trustee is already revoked")]
+    AlreadyRevoked,
+
+    #[msg("Unauthorized action — only patient can modify trustees")]
+    Unauthorized,
+
+    #[msg("Trustee not found")]
+    NotFound,
+
+    #[msg("Trustee is revoked")]
+    Revoked,
+
+    #[msg("Trustee can only issue READ access")]
+    ReadOnly,
+
+    #[msg("Invalid scope for trustee")]
+    InvalidScope,
+}

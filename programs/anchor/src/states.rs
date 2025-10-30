@@ -8,6 +8,7 @@ pub const SEED_GRANT: &[u8] = b"grant";
 pub const SEED_PATIENT_SEQ: &[u8] = b"patient_seq";
 pub const SEED_CONSENT: &[u8] = b"consent";
 pub const SEED_ACCESS: &[u8] = b"access";
+pub const SEED_TRUSTEE: &[u8] = b"trustee";
 
 pub const MAX_NAME_LEN: usize = 100;
 pub const MAX_CID_LEN: usize = 100;
@@ -188,10 +189,10 @@ pub struct Grant {
     pub patient: Pubkey,
     pub grantee: Pubkey,
     pub scope: u8,
-    pub expires_at: Option<i64>,
 
     pub created_by: Pubkey,
     pub created_at: i64,
+    pub via_trustee: bool,
 
     pub revoked: bool,
     pub revoked_at: Option<i64>,
@@ -222,5 +223,18 @@ pub struct Consent {
     pub used: bool, //default = false, kalo sudah dec, used = true.
 
     pub created_at: i64,
+    pub bump: u8,
+}
+
+/// PDA: [b"trustee", patient, trustee]
+#[account]
+#[derive(InitSpace)]
+pub struct Trustee {
+    pub patient: Pubkey,
+    pub trustee: Pubkey,
+    pub added_by: Pubkey,
+    pub created_at: i64,
+    pub revoked: bool,
+    pub revoked_at: Option<i64>,
     pub bump: u8,
 }

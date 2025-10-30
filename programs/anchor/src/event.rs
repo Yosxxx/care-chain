@@ -67,7 +67,6 @@ pub struct GrantCreated {
     pub patient: Pubkey,
     pub grantee: Pubkey,
     pub scope: u8,
-    pub expires_at: Option<i64>,
     pub created_by: Pubkey,
     pub created_at: i64,
 }
@@ -79,5 +78,30 @@ pub struct GrantRevoked {
     pub grantee: Pubkey,
     pub scope: u8,
     pub revoked_by: Pubkey,
+    pub revoked_at: i64,
+}
+
+#[event]
+pub struct TrusteeAdded {
+    pub patient: Pubkey,
+    pub trustee: Pubkey,
+    pub added_at: i64,
+}
+
+#[event]
+pub struct TrusteeGrantCreated {
+    pub grant: Pubkey,
+    pub patient: Pubkey,
+    pub grantee: Pubkey,
+    pub trustee: Pubkey,
+    pub scope: u8,
+    pub created_at: i64,
+}
+
+#[event]
+pub struct TrusteeRevoked {
+    pub trustee_account: Pubkey,
+    pub patient: Pubkey,
+    pub trustee: Pubkey,
     pub revoked_at: i64,
 }

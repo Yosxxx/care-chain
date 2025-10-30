@@ -79,12 +79,8 @@ pub mod anchor {
         patient_upsert(ctx, did)
     }
 
-    pub fn grant_access(
-        ctx: Context<GrantAccess>,
-        scope: u8,
-        expires_at: Option<i64>,
-    ) -> Result<()> {
-        access_grant(ctx, scope, expires_at)
+    pub fn grant_access(ctx: Context<GrantAccess>, scope: u8) -> Result<()> {
+        access_grant(ctx, scope)
     }
 
     pub fn revoke_grant(ctx: Context<RevokeGrant>) -> Result<()> {
@@ -93,5 +89,13 @@ pub mod anchor {
 
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         paused_set(ctx, paused)
+    }
+
+    pub fn revoke_trustee(ctx: Context<RevokeTrustee>) -> Result<()> {
+        trustee_revoke(ctx)
+    }
+
+    pub fn add_trustee(ctx: Context<AddTrustee>) -> Result<()> {
+        trustee_add(ctx)
     }
 }
