@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import sodium from "libsodium-wrappers";
 import { VaultKmsAdapter } from "@/lib/vaultKmsAdapter";
 import { PinataSDK } from "pinata";
+import { Blob, File } from "buffer";
 
-import { Readable } from "node:stream";
 
 export const runtime = "nodejs";
 
@@ -174,26 +174,31 @@ const fail = (where: string, e: unknown, status = 500) => {
   }
 
   // ============================
-  // E) Upload to Pinata (SDK)
+  // E) Upload to Pinata (SDK v4+)
   // ============================
-  let cidEnc = "",
-    metaCid = "";
+  let cidEnc = "", metaCid = "";
   try {
-    const pinata = new PinataSDK({ pinataJWT: process.env.PINATA_JWT! });
-
-    // ciphertext → Node stream (no Blob/FormData)
-    const recordStream = Readable.from(recordEnc);
-    (recordStream as any).path = "record.enc"; // filename for pinata
-    const filePin = await pinata.pinFileToIPFS(recordStream, {
-      pinataMetadata: { name: "record.enc" },
+    const pinata = new PinataSDK({
+      pinataJwt: process.env.PINATA_JWT!,
+      pinataGateway: process.env.PINATA_GATEWAY ?? "example-gateway.mypinata.cloud",
     });
-    cidEnc = filePin.IpfsHash;
 
-    // build minimal meta JSON (strings/numbers only)
+    // ciphertext → Blob → File (SDK requires Web File interface)
+    const blob = new Blob([recordEnc], { type: "application/octet-stream" });
+    const file = new File([blob], "record.enc", { type: "application/octet-stream" });
+
+    // Upload encrypted file (public network)
+   // @ts-expect-error Node File type mismatch with Web File
+    const uploadFile = await pinata.upload.public.file(file).name("record.enc");
+
+
+    // The new response schema uses `cid` not `IpfsHash`
+    cidEnc = uploadFile.cid;
+
+    // --- Metadata JSON Upload ---
     const meta = {
       alg: "xchacha20-poly1305",
       chunk_size: CHUNK_SIZE,
-      // (you can include chunk counts/lengths if needed, but not required)
       nonce_base: b64(nonceBase),
       aad: aadStr,
       cipher_hash: toHex(cipherHash),
@@ -212,15 +217,14 @@ const fail = (where: string, e: unknown, status = 500) => {
       description,
     };
 
-    const metaPin = await pinata.pinJSONToIPFS(meta, {
-      pinataMetadata: { name: "meta.json" },
-    });
-    metaCid = metaPin.IpfsHash;
+    const uploadMeta = await pinata.upload.public.json(meta).name("meta.json");
+    metaCid = uploadMeta.cid;
 
     console.log("[enc-upload] E ok", { cidEnc, metaCid });
   } catch (e) {
     return fail("E pinata upload", e);
   }
+
 
   // ============================
   // F) Return plain JSON result

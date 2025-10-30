@@ -38,15 +38,8 @@ import { toast } from "sonner";
 import { FilterButton } from "@/components/filter-button";
 
 const SEED_RECORD = Buffer.from("record");
-const SEED_HOSPITAL = Buffer.from("hospital");
 const SEED_GRANT = Buffer.from("grant");
 const SCOPE_READ = 1;
-
-const findHospitalPda = (pid: PublicKey, authority: PublicKey) =>
-  PublicKey.findProgramAddressSync(
-    [SEED_HOSPITAL, authority.toBuffer()],
-    pid
-  )[0];
 
 const findGrantReadPda = (
   pid: PublicKey,

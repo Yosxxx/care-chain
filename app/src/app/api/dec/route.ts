@@ -1,4 +1,5 @@
 // src/app/read-record/dec/route.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import sodium from "libsodium-wrappers";
 import { VaultKmsAdapter } from "@/lib/vaultKmsAdapter";
