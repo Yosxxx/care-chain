@@ -37,3 +37,18 @@ export const findPatientSeqPda = (pid: PublicKey, patientPda: PublicKey) =>
     [Buffer.from("patient_seq"), patientPda.toBuffer()],
     pid
   )[0];
+
+export function findTrusteePda(
+  programId: PublicKey,
+  patientWallet: PublicKey,
+  trusteeWallet: PublicKey
+) {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("trustee"),
+      patientWallet.toBuffer(),
+      trusteeWallet.toBuffer(),
+    ],
+    programId
+  )[0];
+}

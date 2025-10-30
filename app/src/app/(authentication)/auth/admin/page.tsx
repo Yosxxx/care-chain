@@ -22,6 +22,7 @@ export default function Page() {
       if (error instanceof Error) {
         console.error(error);
       }
+      setLoading(false);
     }
   }
 
@@ -56,7 +57,12 @@ export default function Page() {
             {/* <Button variant={"outline"} className="font-bold">
               Passwordless Login
             </Button> */}
-            <Button className={`font-bold`} type="submit" disabled={loading}>
+            <Button
+              className={`font-bold`}
+              type="submit"
+              disabled={loading}
+              variant={"outline"}
+            >
               {loading ? (
                 <>
                   <Spinner />
@@ -69,7 +75,7 @@ export default function Page() {
           </div>
           <div className="font-inter text-sm text-muted-foreground font-normal">
             Want to become apart of CareChain?{" "}
-            <Link href={"#"} className="text-black">
+            <Link href={"#"} className="text-white font-bold">
               Register.
             </Link>
           </div>

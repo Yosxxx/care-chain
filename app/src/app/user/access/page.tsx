@@ -17,6 +17,7 @@ import {
   findHospitalPda,
   findPatientPda,
   findConfigPda,
+  findTrusteePda,
 } from "@/lib/pda";
 import { SCOPE_OPTIONS } from "@/lib/constants";
 
@@ -72,6 +73,12 @@ const renderableScopeOptions = SCOPE_OPTIONS.filter(
 
 export default function Page() {
   const { connection } = useConnection();
+  // Check if a given account exists on-chain
+  async function accountExists(pubkey: PublicKey): Promise<boolean> {
+    const info = await connection.getAccountInfo(pubkey);
+    return !!info;
+  }
+
   const wallet = useAnchorWallet();
 
   // --- State for inputs ---
@@ -281,8 +288,9 @@ export default function Page() {
   };
 
   const assertHospitalRegistered = async () => {
-    const hospitalPda = findHospitalPda(programId, grantee!);
-    // @ts-expect-error anchor account typing
+    if (!grantee) throw new Error("Invalid grantee (hospital authority)");
+    const hospitalPda = findHospitalPda(programId, grantee);
+    // @ts-expect-error anchor typing
     const acc = await program!.account.hospital.fetchNullable(hospitalPda);
     if (!acc)
       throw new Error(
@@ -299,18 +307,29 @@ export default function Page() {
 
     const grantPda = findGrantPda(programId, patientPda!, grantee!, scopeByte);
     const configPda = findConfigPda(programId);
+    const trusteePda = findTrusteePda(programId, patientPk!, wallet!.publicKey);
+    const trusteeExists = await accountExists(trusteePda);
+    console.log(
+      "Including trustee account:",
+      trusteeExists ? trusteePda.toBase58() : "none"
+    );
 
+    // Construct and send transaction
     const tx = await program!.methods
-      .grantAccess(scopeByte, bnOpt("")) // User commented out expiresStr
+      .grantAccess(scopeByte)
       .accounts({
         authority: wallet!.publicKey,
         config: configPda,
         patient: patientPda!,
         grant: grantPda,
         grantee: grantee!,
+        ...(trusteeExists
+          ? { trusteeAccount: trusteePda }
+          : { trusteeAccount: null }),
         systemProgram: SystemProgram.programId,
       })
       .rpc();
+
     setSig(tx);
   };
 
@@ -331,6 +350,7 @@ export default function Page() {
         authority: wallet!.publicKey,
       })
       .rpc();
+
     setSig(tx);
   };
 
@@ -338,7 +358,6 @@ export default function Page() {
   const save = async () => {
     try {
       for (const { bit } of renderableScopeOptions) {
-        // Use filtered scopes
         const want = !!desired[bit];
         const have = !!current[bit];
         if (want && !have) {
@@ -349,6 +368,17 @@ export default function Page() {
           await loadGrants();
         }
       }
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    }
+  };
+
+  const revokeAll = async () => {
+    try {
+      for (const { bit } of renderableScopeOptions) {
+        if (current[bit]) await revokeOne(bit);
+      }
+      await loadGrants();
     } catch (e: any) {
       setErr(e?.message ?? String(e));
     }
