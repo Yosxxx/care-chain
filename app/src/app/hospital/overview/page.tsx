@@ -1,5 +1,5 @@
 "use client";
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as React from "react";
 import {
   Card,
@@ -306,7 +306,6 @@ function ChartCard({
   desc,
   data,
   dataKey,
-  gradientId,
   strokeColor,
   multiSeries,
   timeRange,

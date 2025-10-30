@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -30,7 +31,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import sodium from "libsodium-wrappers";
-import JSZip from "jszip";
+
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
 import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
 import { toast } from "sonner";

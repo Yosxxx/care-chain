@@ -6,7 +6,6 @@ import { VaultKmsAdapter } from "@/lib/vaultKmsAdapter";
 export const runtime = "nodejs";
 
 const toU8 = (b64: string) => Uint8Array.from(Buffer.from(b64, "base64"));
-const CHUNK_SIZE_DEFAULT = 1024 * 1024;
 
 function deriveNonce(base: Uint8Array, idx: number) {
   const out = new Uint8Array(base);

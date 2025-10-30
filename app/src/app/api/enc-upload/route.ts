@@ -1,8 +1,9 @@
-// src/app/create-record/enc-upload/route.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import sodium from "libsodium-wrappers";
 import { VaultKmsAdapter } from "@/lib/vaultKmsAdapter";
-import pinataSDK from "@pinata/sdk";
+import { PinataSDK } from "pinata";
+
 import { Readable } from "node:stream";
 
 export const runtime = "nodejs";
@@ -26,11 +27,17 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const fail = (where: string, e: any, status = 500) => {
-    console.error(`[enc-upload] ${where}:`, e);
-    const msg = e?.message ?? String(e);
-    return NextResponse.json({ error: `${where}: ${msg}` }, { status });
-  };
+const fail = (where: string, e: unknown, status = 500) => {
+  console.error(`[enc-upload] ${where}:`, e);
+  const msg =
+    e instanceof Error
+      ? e.message
+      : typeof e === "string"
+      ? e
+      : JSON.stringify(e);
+  return NextResponse.json({ error: `${where}: ${msg}` }, { status });
+};
+
 
   console.log("[enc-upload] POST hit");
 
@@ -172,7 +179,7 @@ export async function POST(req: Request) {
   let cidEnc = "",
     metaCid = "";
   try {
-    const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT! });
+    const pinata = new PinataSDK({ pinataJWT: process.env.PINATA_JWT! });
 
     // ciphertext → Node stream (no Blob/FormData)
     const recordStream = Readable.from(recordEnc);

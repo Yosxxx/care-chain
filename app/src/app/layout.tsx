@@ -9,6 +9,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <meta name="apple-mobile-web-app-title" content="CARECHAIN" />
       <body className="font-sans">
         <SolanaProvider>{children}</SolanaProvider>
         <Toaster />
