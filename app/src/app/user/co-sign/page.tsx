@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -67,8 +68,8 @@ export default function Page() {
       typeof result === "string"
         ? result
         : Array.isArray(result)
-        ? result[0]?.rawValue
-        : (result as any)?.rawValue;
+          ? result[0]?.rawValue
+          : (result as any)?.rawValue;
 
     if (text) {
       setB64(text);
@@ -157,10 +158,10 @@ export default function Page() {
               status.startsWith("❌")
                 ? "error"
                 : status.startsWith("✅")
-                ? "success"
-                : status.startsWith("⚠️")
-                ? "warning"
-                : "info" // Defaults to info (blue) for processing messages
+                  ? "success"
+                  : status.startsWith("⚠️")
+                    ? "warning"
+                    : "info" // Defaults to info (blue) for processing messages
             }
           >
             {status}

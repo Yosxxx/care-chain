@@ -1,4 +1,4 @@
-// src/vaultKmsAdapter.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { KmsAdapter, KmsContext } from "./kmsAdapter";
 
 function stableJson(obj: any) {

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -41,8 +43,8 @@ export default function TrusteesPage() {
     () =>
       wallet
         ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+          commitment: "confirmed",
+        })
         : null,
     [connection, wallet]
   );
@@ -65,17 +67,21 @@ export default function TrusteesPage() {
       throw new Error("You have not registered as a patient yet");
   };
 
-  async function checkTrusteeRegistered(pk: PublicKey) {
-    if (!program) return;
-    try {
-      const tPda = findPatientPda(program.programId, pk);
-      // @ts-expect-error
-      const acc = await program.account.patient.fetchNullable(tPda);
-      setTrusteeValid(!!acc);
-    } catch {
-      setTrusteeValid(false);
-    }
-  }
+  const checkTrusteeRegistered = useCallback(
+    async (pk: PublicKey) => {
+      if (!program) return;
+      try {
+        const tPda = findPatientPda(program.programId, pk);
+        // @ts-expect-error: patient type mismatch in IDL
+        const acc = await program.account.patient.fetchNullable(tPda);
+        setTrusteeValid(!!acc);
+      } catch {
+        setTrusteeValid(false);
+      }
+    },
+    [program] // dependencies of the callback
+  );
+
 
   // === Load patient registration ===
   useEffect(() => {
@@ -104,7 +110,7 @@ export default function TrusteesPage() {
         setTrusteeValid(false);
       }
     })();
-  }, [trusteeStr, program]);
+  }, [trusteeStr, program, checkTrusteeRegistered]);
 
   // === Prepare multi-sig tx (Add Trustee) ===
   const prepareAddTrustee = async () => {
@@ -142,6 +148,8 @@ export default function TrusteesPage() {
       setPendingB64(b64);
 
       setStatus("✅ Transaction prepared. Share QR with trustee to co-sign.");
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setErr(e.message ?? String(e));
     }

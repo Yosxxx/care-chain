@@ -22,7 +22,7 @@ export function useProgram() {
   const program = useMemo(() => {
     if (!provider) return null;
     return new anchor.Program(idl as anchor.Idl, provider);
-  }, [provider, programId]);
+  }, [provider]);
 
   const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "localnet";
   return { program, programId, cluster, ready: !!program };

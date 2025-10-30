@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -47,11 +49,10 @@ type Rec = {
 const pinataGateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY?.trim();
 const ipfsGateway = (cid: string) =>
   pinataGateway
-    ? `${
-        pinataGateway.startsWith("http")
-          ? pinataGateway
-          : `https://${pinataGateway}`
-      }/ipfs/${cid}`
+    ? `${pinataGateway.startsWith("http")
+      ? pinataGateway
+      : `https://${pinataGateway}`
+    }/ipfs/${cid}`
     : `https://ipfs.io/ipfs/${cid}`;
 
 function deriveNonce(b: Uint8Array, idx: number) {
@@ -125,7 +126,7 @@ export default function Page() {
               cache: "no-store",
             });
             meta = await metaRes.json();
-          } catch {}
+          } catch { }
 
           out.push({
             seq: i,
@@ -149,7 +150,7 @@ export default function Page() {
         setErr(e?.message ?? String(e));
       }
     })();
-  }, [ready, program, programId.toBase58(), publicKey?.toBase58()]);
+  }, [ready, program, programId, publicKey]);
 
   // ================== CHECK ATTACHMENTS ==================
   useEffect(() => {
@@ -252,7 +253,7 @@ export default function Page() {
 
   // ================== FILTERING + PAGINATION ==================
   const filteredRecords = useMemo(() => {
-    let filtered = records.filter((r) =>
+    const filtered = records.filter((r) =>
       (r.diagnosis + r.keywords + r.description)
         .toLowerCase()
         .includes(search.toLowerCase())
@@ -413,8 +414,8 @@ export default function Page() {
                   {attachmentStatus[rec.pda] === false
                     ? "No Attachments"
                     : downloading === rec.pda
-                    ? "Decrypting..."
-                    : "Download & Decrypt"}
+                      ? "Decrypting..."
+                      : "Download & Decrypt"}
                 </Button>
               </div>
             </CollapsibleContent>

@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -59,8 +62,8 @@ export default function TrusteeGrantPage() {
     () =>
       wallet
         ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+          commitment: "confirmed",
+        })
         : null,
     [connection, wallet]
   );
@@ -88,7 +91,7 @@ export default function TrusteeGrantPage() {
         setTrusteeOfPatient(false);
       }
     })();
-  }, [program, patientStr, trusteePk]);
+  }, [program, programId, patientStr, trusteePk]);
 
   // ---- Verify hospital authority ----
   useEffect(() => {
