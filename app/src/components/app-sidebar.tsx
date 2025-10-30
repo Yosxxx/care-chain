@@ -75,7 +75,7 @@ export default function AppSidebar({
                   w-full justify-start gap-x-2 px-4 text-muted-foreground
                   ${
                     active
-                      ? "text-primary font-medium dark:bg-sidebar-accent dark:text-sidebar-accent-foreground "
+                      ? "text-primary font-medium bg-card  dark:text-sidebar-accent-foreground "
                       : "hover:text-foreground dark:hover:text-white"
                   }
                 `}
@@ -106,7 +106,7 @@ export default function AppSidebar({
                       w-full justify-start gap-x-2 px-4 text-muted-foreground
                       ${
                         active
-                          ? "text-primary font-medium dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
+                          ? "text-primary font-medium bg-card  dark:text-sidebar-accent-foreground"
                           : "hover:text-foreground dark:hover:text-white"
                       }
                     `}
@@ -147,7 +147,7 @@ export default function AppSidebar({
                       w-full justify-start gap-x-2 px-4 text-muted-foreground
                       ${
                         active
-                          ? "text-primary font-medium dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
+                          ? "text-primary font-medium bg-card  dark:text-sidebar-accent-foreground"
                           : "hover:text-foreground dark:hover:text-white"
                       }
                     `}

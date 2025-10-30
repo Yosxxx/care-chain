@@ -39,7 +39,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 
 // --- Type definitions (unchanged) ---
@@ -399,7 +398,7 @@ export default function Page() {
         </div>
       </header>
 
-      <div className="flex w-full items-center space-x-2 mt-2">
+      <div className="flex items-center space-x-2 mt-2">
         <Input
           type="text"
           placeholder="grantee (hospital authority pubkey)"

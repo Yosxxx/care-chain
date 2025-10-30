@@ -633,7 +633,7 @@ export default function Page() {
       {/* ========== FORM VIEW ========== */}
       {view === "form" && (
         <div className="w-full mx-auto">
-          <header className="flex justify-center items-center mb-5">
+          <header className="flex mb-5">
             <h1 className="text-2xl font-architekt font-bold">
               Edit & Submit Record
             </h1>

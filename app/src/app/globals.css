@@ -262,3 +262,32 @@
     color: oklch(0.4 0 0);
   }
 }
+
+/* ───────────────── Wallet Adapter Overrides (match shadcn "secondary") ───────────────── */
+
+.wallet-adapter-button,
+.wallet-adapter-button-trigger {
+  @apply bg-card border border-sidebar-accent;
+}
+
+.wallet-adapter-button:hover:not([disabled]),
+.wallet-adapter-button-trigger:hover:not([disabled]) {
+  @apply bg-secondary/80;
+}
+
+/* Dropdown (if using WalletModal/Dropdown) — keep it consistent with your surface tokens */
+.wallet-adapter-dropdown-list {
+  @apply rounded-xs border bg-background text-foreground shadow-md;
+}
+.wallet-adapter-dropdown-list-item {
+  @apply text-sm hover:bg-accent hover:text-accent-foreground;
+}
+
+/* Modal polish */
+.wallet-adapter-modal-wrapper {
+  @apply rounded-lg bg-background text-foreground;
+}
+
+.wallet-adapter-modal-button-close {
+  @apply rounded-xs hover:bg-accent;
+}
