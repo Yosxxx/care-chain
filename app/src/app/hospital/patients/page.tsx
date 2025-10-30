@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
-
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { useState, useMemo, useEffect } from "react";
 import {
   Search,
@@ -115,7 +114,6 @@ export default function Page() {
   >({});
 
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-
   const [page, setPage] = useState(1);
   const perPage = 5;
   const totalPages = Math.ceil(records.length / perPage);
@@ -125,10 +123,35 @@ export default function Page() {
   );
 
   const disabled = !ready || !program || !hospitalWallet;
-
   const [scanning, setScanning] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const devices = useDevices();
+
+  // --- NEW: Run attachment check as soon as records are loaded ---
+  useEffect(() => {
+    // This effect runs once when records are loaded.
+    // It uses a size heuristic to guess if attachments exist.
+    if (records.length === 0) {
+      setDownloadAllowed({});
+      return;
+    }
+
+    // 5KB threshold. A zip with only a JSON file will likely be smaller.
+    const THRESHOLD_NO_ATTACHMENT = 5120; // 5 KB
+    const newDownloadAllowed: Record<string, boolean> = {};
+
+    for (const rec of records) {
+      // If size is very small, assume NO attachments.
+      if (rec.sizeBytes < THRESHOLD_NO_ATTACHMENT) {
+        newDownloadAllowed[rec.pda] = false;
+      } else {
+        // Otherwise, assume YES attachments.
+        newDownloadAllowed[rec.pda] = true;
+      }
+    }
+    // Set the state for all buttons at once.
+    setDownloadAllowed(newDownloadAllowed);
+  }, [records]); // Dependency: run when records change
 
   const handleScan = (result: unknown) => {
     if (!result) return;
@@ -138,7 +161,6 @@ export default function Page() {
         : Array.isArray(result)
         ? result[0]?.rawValue
         : (result as any)?.rawValue;
-
     if (text) {
       setPatientInput(text.trim());
       setScanning(false);
@@ -153,6 +175,7 @@ export default function Page() {
       setStatus("⏳ Loading...");
       setLoading(true);
       setHasGrant(null);
+      setDownloadAllowed({}); // Reset download permissions on new search
 
       const patientWalletPk = new PublicKey(patientInput.trim());
       const patientPda = findPatientPda(programId, patientWalletPk);
@@ -167,7 +190,12 @@ export default function Page() {
       );
       // @ts-expect-error
       const grantAcc = await program!.account.grant.fetchNullable(grantReadPda);
-      if (!grantAcc || grantAcc.revoked) {
+      if (
+        !grantAcc ||
+        grantAcc.revoked ||
+        (Number(grantAcc.expiresAt) !== 0 &&
+          Number(grantAcc.expiresAt) <= Math.floor(Date.now() / 1000))
+      ) {
         setHasGrant(false);
         throw new Error("No active read grant for this patient.");
       }
@@ -190,6 +218,8 @@ export default function Page() {
         )[0];
         // @ts-expect-error
         const rec = await program!.account.record.fetch(recordPda);
+        const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
+
         out.push({
           seq: i,
           pda: recordPda.toBase58(),
@@ -202,9 +232,9 @@ export default function Page() {
           hospital_name: rec.hospitalName,
           doctor_name: rec.doctorName,
           doctor_id: rec.doctorId,
-          diagnosis: rec.diagnosis,
-          keywords: rec.keywords,
-          description: rec.description,
+          diagnosis: meta.diagnosis || "",
+          keywords: meta.keywords || "",
+          description: meta.description || "",
           txSignature: rec.txSignature ?? undefined,
         });
       }
@@ -222,99 +252,83 @@ export default function Page() {
     }
   }
 
-  useEffect(() => {
-    async function autoDecryptCheck() {
-      if (!records.length) return;
-      await sodium.ready;
-
-      for (const rec of records) {
-        try {
-          const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
-          const chunkSize = meta.chunk_size ?? 1024 * 1024;
-          const nonceBase = Uint8Array.from(
-            Buffer.from(meta.nonce_base, "base64")
-          );
-          const aad = new TextEncoder().encode(meta.aad || "");
-
-          const unwrap = await (
-            await fetch("/api/unwrap-dek", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                wrapped_dek_b64: meta.wrapped_dek,
-                recordId: meta.aad,
-              }),
-            })
-          ).json();
-
-          const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
-          const res = await fetch(ipfsGateway(rec.cidEnc));
-          const encBuf = new Uint8Array(await res.arrayBuffer());
-          const chunks: Uint8Array[] = [];
-          const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
-          let off = 0,
-            idx = 0;
-          while (off < encBuf.length) {
-            const clen = Math.min(chunkSize + TAG, encBuf.length - off);
-            const cipher = encBuf.subarray(off, off + clen);
-            off += clen;
-            const nonce = deriveNonce(nonceBase, idx++);
-            const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-              null,
-              cipher,
-              aad,
-              nonce,
-              DEK
-            );
-            chunks.push(plain);
-          }
-
-          const merged = new Uint8Array(
-            chunks.reduce((n, c) => n + c.length, 0)
-          );
-          let p = 0;
-          for (const c of chunks) {
-            merged.set(c, p);
-            p += c.length;
-          }
-
-          const blob = new Blob([merged], { type: meta.original_content_type });
-          const zip = await JSZip.loadAsync(blob);
-          const fileNames = Object.keys(zip.files);
-          const extraFiles = fileNames.filter(
-            (f) => f !== "medical_record.json"
-          );
-
-          setDownloadAllowed((prev) => ({
-            ...prev,
-            [rec.pda]: extraFiles.length > 0,
-          }));
-        } catch {
-          setDownloadAllowed((prev) => ({ ...prev, [rec.pda]: false }));
-        }
-      }
+  // --- MODIFIED: Simplified download function ---
+  async function handleDecryptAndDownload(rec: Rec) {
+    // Check against the state set by the useEffect
+    if (downloadAllowed[rec.pda] === false) {
+      toast.info("This record only contains metadata and no file attachments.");
+      return;
     }
 
-    autoDecryptCheck();
-  }, [records]);
-
-  async function handleDecryptAndDownload(rec: Rec) {
     try {
-      setStatus("Downloading...");
+      setStatus("Decrypting...");
+      await sodium.ready;
       const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
       const res = await fetch(ipfsGateway(rec.cidEnc));
-      const blob = new Blob([await res.arrayBuffer()], {
-        type: meta.original_content_type,
-      });
+      if (!res.ok) throw new Error("Failed to fetch encrypted data.");
+      const encBuf = new Uint8Array(await res.arrayBuffer());
+      const chunkSize = meta.chunk_size ?? 1024 * 1024;
+      const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
+      const aad = new TextEncoder().encode(meta.aad || "");
+
+      const unwrap = await (
+        await fetch("/api/unwrap-dek", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            wrapped_dek_b64: meta.wrapped_dek,
+            recordId: meta.aad,
+          }),
+        })
+      ).json();
+
+      if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK.");
+      const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
+
+      const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+      const chunks: Uint8Array[] = [];
+      let off = 0,
+        idx = 0;
+      while (off < encBuf.length) {
+        const clen = Math.min(chunkSize + TAG, encBuf.length - off);
+        const cipher = encBuf.subarray(off, off + clen);
+        off += clen;
+        const nonce = deriveNonce(nonceBase, idx++);
+        const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+          null,
+          cipher,
+          aad,
+          nonce,
+          DEK
+        );
+        chunks.push(plain);
+      }
+
+      const merged = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+      let p = 0;
+      for (const c of chunks) {
+        merged.set(c, p);
+        p += c.length;
+      }
+
+      // The check is no longer needed here, we just proceed to download.
+      setStatus("✅ Attachments found. Preparing download...");
+
+      const blob = new Blob([merged], { type: meta.original_content_type });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `record_${rec.seq}.zip`;
+      const date = new Date(rec.createdAt).toISOString().split("T")[0];
+      a.download = `record_${rec.seq}_${date}.zip`;
       a.click();
-      setStatus("Downloaded.");
+      URL.revokeObjectURL(url); // Clean up
+
+      setStatus("✅ Download complete.");
+      toast.success("Decrypted file downloaded.");
     } catch (e: any) {
       setErr(e?.message ?? String(e));
       setStatus("");
+      toast.error(e?.message ?? String(e));
     }
   }
 
@@ -326,7 +340,6 @@ export default function Page() {
         </div>
       </header>
 
-      {/* --- STATUS BANNERS --- */}
       <div className="space-y-2 my-2">
         {err && <StatusBanner type="error">❌ {err}</StatusBanner>}
         {status && !err && status.toLowerCase().includes("loading") && (
@@ -335,19 +348,16 @@ export default function Page() {
         {status && !err && status.startsWith("✅") && (
           <StatusBanner type="success">{status}</StatusBanner>
         )}
+        {status && !err && status.startsWith("ℹ️") && (
+          <StatusBanner type="info">{status}</StatusBanner>
+        )}
         {hasGrant === false && (
           <StatusBanner type="warning">
             ⚠️ No active read grant. Ask patient to authorize this hospital.
           </StatusBanner>
         )}
-        {hasGrant && records.length === 0 && !loading && (
-          <StatusBanner type="info">
-            ℹ️ No records found for this patient.
-          </StatusBanner>
-        )}
       </div>
 
-      {/* Search and Filters */}
       <div className="mt-2 flex gap-x-3 mb-5">
         <Input
           placeholder="Enter patient wallet (base58)"
@@ -368,10 +378,10 @@ export default function Page() {
             setErr("");
             setStatus("");
             setHasGrant(null);
-            toast.info("Search input cleared.");
+            setDownloadAllowed({}); // Clear download state
+            toast.info("Search cleared.");
           }}
           variant="secondary"
-          disabled={loading && !!patientInput}
         >
           Clear
         </Button>
@@ -390,7 +400,6 @@ export default function Page() {
         </Button>
       </div>
 
-      {/* Record Cards */}
       {hasGrant && records.length > 0 && (
         <div className="flex flex-col gap-y-4 mb-5">
           {paginated.map((rec) => (
@@ -413,7 +422,6 @@ export default function Page() {
               </CollapsibleTrigger>
 
               <CollapsibleContent className="mt-4 space-y-4 text-sm">
-                {/* Two-row metadata */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs font-medium">Hospital Name</div>
@@ -430,8 +438,6 @@ export default function Page() {
                 </div>
 
                 <Separator className="my-2" />
-
-                {/* Description */}
                 {rec.description && (
                   <div>
                     <div className="text-xs font-medium">Description</div>
@@ -441,7 +447,6 @@ export default function Page() {
                   </div>
                 )}
 
-                {/* Solscan link */}
                 {rec.txSignature && (
                   <div>
                     <div className="text-xs font-medium">
@@ -459,17 +464,16 @@ export default function Page() {
                 )}
 
                 <Separator className="my-2" />
-
-                {/* Action */}
                 <div className="pt-3 border-t mt-3">
+                  {/* --- This button now uses the state from useEffect --- */}
                   <Button
                     onClick={() => handleDecryptAndDownload(rec)}
                     variant="secondary"
-                    disabled={!downloadAllowed[rec.pda]}
+                    disabled={downloadAllowed[rec.pda] === false}
                   >
-                    {downloadAllowed[rec.pda]
-                      ? "Download Decrypted File"
-                      : "No Attachments"}
+                    {downloadAllowed[rec.pda] === false
+                      ? "No Attachments"
+                      : "Download & Decrypt"}
                   </Button>
                 </div>
               </CollapsibleContent>
@@ -478,7 +482,6 @@ export default function Page() {
         </div>
       )}
 
-      {/* Pagination */}
       {records.length > perPage && (
         <Pagination>
           <PaginationContent>
@@ -518,7 +521,6 @@ export default function Page() {
         </Pagination>
       )}
 
-      {/* QR Scanner */}
       {scanning && (
         <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center">
           <div className="w-[320px] aspect-square bg-black rounded-lg overflow-hidden border-4 border-white relative">

@@ -53,21 +53,38 @@ const ipfsGateway = (cid: string) =>
       }/ipfs/${cid}`
     : `https://ipfs.io/ipfs/${cid}`;
 
+function deriveNonce(b: Uint8Array, idx: number) {
+  const out = new Uint8Array(b);
+  out[out.length - 4] = idx & 0xff;
+  out[out.length - 3] = (idx >> 8) & 0xff;
+  out[out.length - 2] = (idx >> 16) & 0xff;
+  out[out.length - 1] = (idx >> 24) & 0xff;
+  return out;
+}
+
 export default function Page() {
   const { publicKey } = useWallet();
   const { program, programId, ready } = useProgram();
 
   const [records, setRecords] = useState<Rec[]>([]);
-  const [downloadAllowed, setDownloadAllowed] = useState<
-    Record<string, boolean>
-  >({});
   const [patientOk, setPatientOk] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
-
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const perPage = 10;
+
+  // State to track if a record has viewable/downloadable attachments
+  const [attachmentStatus, setAttachmentStatus] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Viewer states
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerMime, setViewerMime] = useState<string | null>(null);
+  const [textPreview, setTextPreview] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [openViewer, setOpenViewer] = useState(false);
 
   // ================== FETCH ON-CHAIN RECORDS ==================
   useEffect(() => {
@@ -75,8 +92,6 @@ export default function Page() {
       setErr("");
       setRecords([]);
       setPatientOk(null);
-      setDownloadAllowed({});
-
       if (!ready || !program || !publicKey) return;
 
       try {
@@ -92,7 +107,7 @@ export default function Page() {
         // get seq
         const seqPda = findPatientSeqPda(programId, patientPda);
         // @ts-expect-error
-        const seqAcc = await (program.account as any).patientSeq.fetch(seqPda);
+        const seqAcc = await program.account.patientSeq.fetch(seqPda);
         const total = Number(seqAcc.value);
 
         const out: Rec[] = [];
@@ -105,9 +120,17 @@ export default function Page() {
             ],
             programId
           )[0];
+          // @ts-expect-error
+          const rec = await program.account.record.fetch(recordPda);
 
-          // @ts-expect-error Anchor typing
-          const rec = await (program.account as any).record.fetch(recordPda);
+          // Fetch meta.json from IPFS
+          let meta: any = {};
+          try {
+            const metaRes = await fetch(ipfsGateway(rec.metaCid), {
+              cache: "no-store",
+            });
+            meta = await metaRes.json();
+          } catch {}
 
           out.push({
             seq: i,
@@ -117,11 +140,11 @@ export default function Page() {
             hospital: rec.hospital.toBase58(),
             sizeBytes: Number(rec.sizeBytes),
             createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
-            hospital_name: rec.hospitalName,
-            doctor_name: rec.doctorName,
-            diagnosis: rec.diagnosis,
-            keywords: rec.keywords,
-            description: rec.description,
+            hospital_name: meta.hospital_name || rec.hospitalName || "",
+            doctor_name: meta.doctor_name || rec.doctorName || "",
+            diagnosis: meta.diagnosis || "",
+            keywords: meta.keywords || "",
+            description: meta.description || "",
             txSignature: rec.txSignature ?? "",
           });
         }
@@ -133,88 +156,116 @@ export default function Page() {
     })();
   }, [ready, program, programId.toBase58(), publicKey?.toBase58()]);
 
-  // ================== AUTO DECRYPT & VALIDATE ==================
+  // ================== CHECK FOR ATTACHMENTS (HEURISTIC) ==================
   useEffect(() => {
-    if (!records.length) return;
-    (async () => {
+    if (records.length === 0) {
+      setAttachmentStatus({});
+      return;
+    }
+
+    const THRESHOLD_NO_ATTACHMENT = 5120; // 5 KB
+    const newAttachmentStatus: Record<string, boolean> = {};
+
+    for (const rec of records) {
+      // If size is very small, assume NO attachments.
+      // Otherwise, assume YES.
+      newAttachmentStatus[rec.pda] = rec.sizeBytes > THRESHOLD_NO_ATTACHMENT;
+    }
+    setAttachmentStatus(newAttachmentStatus);
+  }, [records]); // Dependency: run when records change
+
+  // ================== DECRYPT & VIEW ==================
+  async function decryptAndView(rec: Rec) {
+    // Guard clause: Don't run if we know there are no attachments
+    if (attachmentStatus[rec.pda] === false) {
+      return;
+    }
+    try {
+      setErr("");
+      setOpenViewer(true);
+      setViewerUrl(null);
+      setViewerMime(null);
+      setTextPreview(null);
+      setZoom(1);
+
       await sodium.ready;
-      for (const rec of records) {
-        try {
-          const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
-          const unwrap = await (
-            await fetch("/api/unwrap-dek", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                wrapped_dek_b64: meta.wrapped_dek,
-                recordId: meta.aad,
-              }),
-            })
-          ).json();
+      const meta = await (
+        await fetch(ipfsGateway(rec.metaCid), { cache: "no-store" })
+      ).json();
 
-          if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
-          const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
-          const nonceBase = Uint8Array.from(
-            Buffer.from(meta.nonce_base, "base64")
-          );
-          const aad = new TextEncoder().encode(meta.aad || "");
-          const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
+      const unwrap = await (
+        await fetch("/api/unwrap-dek", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            wrapped_dek_b64: meta.wrapped_dek,
+            recordId: meta.aad,
+          }),
+        })
+      ).json();
 
-          const res = await fetch(ipfsGateway(rec.cidEnc));
-          const encBuf = new Uint8Array(await res.arrayBuffer());
-          const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+      if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
+      const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
 
-          let off = 0;
-          let idx = 0;
-          const chunks: Uint8Array[] = [];
+      const chunkSize = meta.chunk_size ?? 1024 * 1024;
+      const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
+      const aad = new TextEncoder().encode(meta.aad || "");
+      const res = await fetch(ipfsGateway(rec.cidEnc));
+      const encBuf = new Uint8Array(await res.arrayBuffer());
 
-          while (off < encBuf.length) {
-            const clen = Math.min(chunkSize + TAG, encBuf.length - off);
-            const cipher = encBuf.subarray(off, off + clen);
-            off += clen;
-            const nonce = new Uint8Array(nonceBase);
-            nonce[nonce.length - 4] = idx & 0xff;
-            nonce[nonce.length - 3] = (idx >> 8) & 0xff;
-            nonce[nonce.length - 2] = (idx >> 16) & 0xff;
-            nonce[nonce.length - 1] = (idx >> 24) & 0xff;
-            idx++;
-
-            const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-              null,
-              cipher,
-              aad,
-              nonce,
-              DEK
-            );
-            chunks.push(plain);
-          }
-
-          const merged = new Uint8Array(
-            chunks.reduce((n, c) => n + c.length, 0)
-          );
-          let p = 0;
-          for (const c of chunks) {
-            merged.set(c, p);
-            p += c.length;
-          }
-
-          const blob = new Blob([merged], { type: meta.original_content_type });
-          const zip = await JSZip.loadAsync(blob);
-          const fileNames = Object.keys(zip.files);
-          const extraFiles = fileNames.filter(
-            (f) => f !== "medical_record.json"
-          );
-
-          setDownloadAllowed((prev) => ({
-            ...prev,
-            [rec.pda]: extraFiles.length > 0,
-          }));
-        } catch {
-          setDownloadAllowed((prev) => ({ ...prev, [rec.pda]: false }));
-        }
+      const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+      const chunks: Uint8Array[] = [];
+      let off = 0,
+        idx = 0;
+      while (off < encBuf.length) {
+        const clen = Math.min(chunkSize + TAG, encBuf.length - off);
+        const cipher = encBuf.subarray(off, off + clen);
+        off += clen;
+        const nonce = deriveNonce(nonceBase, idx++);
+        const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+          null,
+          cipher,
+          aad,
+          nonce,
+          DEK
+        );
+        chunks.push(plain);
       }
-    })();
-  }, [records]);
+
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const merged = new Uint8Array(total);
+      let p = 0;
+      for (const c of chunks) {
+        merged.set(c, p);
+        p += c.length;
+      }
+
+      // Since this function only runs if attachments are expected,
+      // we can assume the decrypted content is a zip.
+      // We will load it to extract the first non-JSON file for viewing.
+      const zip = await JSZip.loadAsync(merged);
+      const firstAttachment = Object.values(zip.files).find(
+        (file) => !file.dir && file.name.toLowerCase() !== "medical_record.json"
+      );
+
+      if (!firstAttachment) {
+        throw new Error(
+          "Expected an attachment in the zip file, but none was found."
+        );
+      }
+
+      const blob = await firstAttachment.async("blob");
+      const url = URL.createObjectURL(blob);
+      setViewerUrl(url);
+      setViewerMime(blob.type); // Use the MIME type from the blob itself
+
+      if (blob.type.startsWith("text/") || blob.type.includes("json")) {
+        setTextPreview(await blob.text());
+      }
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    }
+  }
 
   // ================== FILTERING + PAGINATION ==================
   const filteredRecords = useMemo(() => {
@@ -246,85 +297,13 @@ export default function Page() {
   const startIndex = (page - 1) * perPage;
   const paginated = filteredRecords.slice(startIndex, startIndex + perPage);
 
-  // ================== DECRYPT + DOWNLOAD ==================
-  async function handleDecryptAndDownload(rec: Rec) {
-    try {
-      await sodium.ready;
-      const meta = await (await fetch(ipfsGateway(rec.metaCid))).json();
-      const unwrap = await (
-        await fetch("/api/unwrap-dek", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            wrapped_dek_b64: meta.wrapped_dek,
-            recordId: meta.aad,
-          }),
-        })
-      ).json();
-
-      const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
-      const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
-      const aad = new TextEncoder().encode(meta.aad || "");
-      const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
-
-      const res = await fetch(ipfsGateway(rec.cidEnc));
-      const encBuf = new Uint8Array(await res.arrayBuffer());
-      const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
-
-      let off = 0;
-      let idx = 0;
-      const chunks: Uint8Array[] = [];
-
-      while (off < encBuf.length) {
-        const clen = Math.min(chunkSize + TAG, encBuf.length - off);
-        const cipher = encBuf.subarray(off, off + clen);
-        off += clen;
-        const nonce = new Uint8Array(nonceBase);
-        nonce[nonce.length - 4] = idx & 0xff;
-        nonce[nonce.length - 3] = (idx >> 8) & 0xff;
-        nonce[nonce.length - 2] = (idx >> 16) & 0xff;
-        nonce[nonce.length - 1] = (idx >> 24) & 0xff;
-        idx++;
-
-        const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null,
-          cipher,
-          aad,
-          nonce,
-          DEK
-        );
-        chunks.push(plain);
-      }
-
-      const total = chunks.reduce((n, c) => n + c.length, 0);
-      const merged = new Uint8Array(total);
-      let p = 0;
-      for (const c of chunks) {
-        merged.set(c, p);
-        p += c.length;
-      }
-
-      const contentType =
-        meta.original_content_type || "application/octet-stream";
-      const blob = new Blob([merged], { type: contentType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = meta.original_name || `record-${rec.seq}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert(e.message ?? String(e));
-    }
-  }
-
   // ================== UI ==================
   return (
     <main className="space-y-6 my-5">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">My Records</h1>
-          <p>View and download your medical records</p>
+          <p>View and decrypt your medical records securely</p>
         </div>
       </div>
 
@@ -366,7 +345,6 @@ export default function Page() {
         />
       </div>
 
-      {/* Record Cards */}
       <div className="flex flex-col gap-y-4">
         {paginated.map((rec) => (
           <Collapsible key={rec.pda} className="border p-4 rounded-xs">
@@ -431,13 +409,14 @@ export default function Page() {
               )}
 
               <div className="pt-3 border-t mt-3">
+                {/* --- MODIFIED BUTTON --- */}
                 <Button
-                  onClick={() => handleDecryptAndDownload(rec)}
-                  disabled={!downloadAllowed[rec.pda]}
+                  onClick={() => decryptAndView(rec)}
+                  disabled={attachmentStatus[rec.pda] === false}
                 >
-                  {downloadAllowed[rec.pda]
-                    ? "Download Decrypted File"
-                    : "No Attachments"}
+                  {attachmentStatus[rec.pda] === false
+                    ? "No Attachments"
+                    : "View Encrypted File"}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -458,7 +437,6 @@ export default function Page() {
                 }}
               />
             </PaginationItem>
-
             {Array.from({ length: totalPages }).map((_, i) => (
               <PaginationItem key={i}>
                 <PaginationLink
@@ -473,7 +451,6 @@ export default function Page() {
                 </PaginationLink>
               </PaginationItem>
             ))}
-
             <PaginationItem>
               <PaginationNext
                 href="#"
@@ -485,6 +462,53 @@ export default function Page() {
             </PaginationItem>
           </PaginationContent>
         </Pagination>
+      )}
+
+      {openViewer && viewerUrl && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur flex flex-col z-[9999]">
+          <div className="flex items-center gap-3 bg-black/40 text-white p-3">
+            <button onClick={() => setOpenViewer(false)}>✕ Close</button>
+            <a href={viewerUrl} download className="underline">
+              Download
+            </a>
+            <button onClick={() => setZoom((z) => z + 0.1)}>Zoom +</button>
+            <button onClick={() => setZoom((z) => Math.max(0.2, z - 0.1))}>
+              Zoom −
+            </button>
+            <button onClick={() => setZoom(1)}>Fit</button>
+          </div>
+
+          <div className="flex-1 flex justify-center items-center overflow-auto p-4">
+            {viewerMime?.includes("pdf") && (
+              <iframe
+                src={viewerUrl}
+                style={{ zoom }}
+                className="w-full h-full"
+              />
+            )}
+            {viewerMime?.startsWith("image/") && (
+              <img src={viewerUrl} style={{ transform: `scale(${zoom})` }} />
+            )}
+            {textPreview && (
+              <pre
+                className="text-white p-4 bg-black/30 rounded max-w-4xl overflow-auto whitespace-pre-wrap"
+                style={{ transform: `scale(${zoom})` }}
+              >
+                {textPreview}
+              </pre>
+            )}
+            {viewerMime?.startsWith("video/") && (
+              <video
+                src={viewerUrl}
+                controls
+                style={{ transform: `scale(${zoom})` }}
+              />
+            )}
+            {viewerMime?.startsWith("audio/") && (
+              <audio src={viewerUrl} controls />
+            )}
+          </div>
+        </div>
       )}
     </main>
   );

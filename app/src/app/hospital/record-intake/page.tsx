@@ -79,6 +79,7 @@ export default function Page() {
   // --- CO-SIGN STATE (COPIED) ---
   const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
   const [coSignBase64, setCoSignBase64] = useState("");
+  const [shareUrl, setShareUrl] = useState(""); // <-- ADDED from base logic
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -139,7 +140,14 @@ export default function Page() {
     fd.append("patientPk_b64", patientPk_b64);
     fd.append("rsCreatorPk_b64", hospitalPk_b64);
 
-    // Make sure this API route matches your file structure
+    if (record) {
+      fd.append("hospital_name", record.hospital_name || "");
+      fd.append("doctor_name", record.doctor_name || "");
+      fd.append("diagnosis", record.diagnosis || "");
+      fd.append("keywords", record.keywords || "");
+      fd.append("description", record.description || "");
+    }
+
     const r = await fetch("/api/enc-upload", { method: "POST", body: fd });
 
     const text = await r.text();
@@ -241,6 +249,19 @@ export default function Page() {
       }
     })();
   }, [program, wallet?.publicKey, patientPk?.toBase58()]);
+
+  // --- EFFECT FOR SHARE URL (COPIED) ---
+  useEffect(() => {
+    if (coSignBase64 && typeof window !== "undefined") {
+      setShareUrl(
+        `${window.location.origin}/co-sign?tx=${encodeURIComponent(
+          coSignBase64
+        )}`
+      );
+    } else {
+      setShareUrl("");
+    }
+  }, [coSignBase64]);
 
   // ==================== FETCH HOSPITAL INFO ====================
   useEffect(() => {
@@ -360,7 +381,7 @@ export default function Page() {
   const refreshCosignTx = async () => {
     try {
       if (!wallet || !lastIx) return;
-      setStatus("Refreshihng co-sign transaction...");
+      setStatus("Refreshing co-sign transaction...");
       const { blockhash } = await connection.getLatestBlockhash("finalized");
       const ltx = new Transaction({
         feePayer: wallet.publicKey,
@@ -376,8 +397,11 @@ export default function Page() {
 
       setCoSignBase64(b64);
       setStatus("Share the new link/base64 with the patient.");
+      toast.success("Transaction refreshed.");
     } catch (e: any) {
-      setStatus(`❌ ${e?.message || String(e)}`);
+      const msg = e?.message || String(e);
+      setStatus(`❌ ${msg}`);
+      toast.error(`Failed to refresh: ${msg}`);
     }
   };
 
@@ -466,12 +490,9 @@ export default function Page() {
           1,
           { xChaCha20: {} },
 
+          // ✅ Correct: Only 17 arguments total
           record.hospital_name || "",
-          record.doctor_name || "",
-
-          record.diagnosis || "",
-          record.keywords || "",
-          record.description || ""
+          record.doctor_name || ""
         )
         .accounts({
           uploader: wallet.publicKey,
@@ -616,25 +637,38 @@ export default function Page() {
             />
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          {/* --- MODIFIED: Added Refresh Button & Share Link --- */}
+          <div className="flex flex-col items-center gap-3">
             <p className="text-xs text-muted-foreground break-all max-w-[90%] text-center">
               {coSignBase64.slice(0, 64)}...
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(coSignBase64);
-                  toast.success("Copied QR payload to clipboard");
-                } catch {
-                  toast.error("Failed to copy to clipboard");
-                }
-              }}
-            >
-              Copy Payload
-            </Button>
+            <div className="flex gap-2 items-center justify-center flex-wrap w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(coSignBase64);
+                    toast.success("Copied QR payload to clipboard");
+                  } catch {
+                    toast.error("Failed to copy to clipboard");
+                  }
+                }}
+                className="flex-1"
+              >
+                Copy Payload
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshCosignTx}
+                className="flex-1"
+              >
+                Refresh TX
+              </Button>
+            </div>
           </div>
+          {/* --- END MODIFICATION --- */}
 
           <Button variant="outline" onClick={() => setView("form")}>
             Back to Form

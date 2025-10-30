@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { QrCodeIcon, X } from "lucide-react";
 import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
 import { StatusBanner } from "@/components/status-banner";
+import { toast } from "sonner";
 
 export default function Page() {
   const { connection } = useConnection();
@@ -54,7 +55,7 @@ export default function Page() {
       toast.success("Transaction Sent");
     } catch (e: any) {
       setStatus(`❌ ${e?.message || String(e)}`);
-      toast.errpr("Transaction Failed");
+      toast.error("Transaction Failed");
     }
   };
 
@@ -150,15 +151,16 @@ export default function Page() {
             Sign & Submit
           </Button>
         </div>
-
         {status && (
           <StatusBanner
             type={
-              status.toLowerCase().includes("error")
+              status.startsWith("❌")
                 ? "error"
-                : status.toLowerCase().includes("success")
+                : status.startsWith("✅")
                 ? "success"
-                : "info"
+                : status.startsWith("⚠️")
+                ? "warning"
+                : "info" // Defaults to info (blue) for processing messages
             }
           >
             {status}
