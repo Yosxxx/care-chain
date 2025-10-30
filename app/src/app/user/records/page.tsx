@@ -240,24 +240,21 @@ export default function Page() {
         p += c.length;
       }
 
-      // Since this function only runs if attachments are expected,
-      // we can assume the decrypted content is a zip.
-      // We will load it to extract the first non-JSON file for viewing.
-      const zip = await JSZip.loadAsync(merged);
-      const firstAttachment = Object.values(zip.files).find(
-        (file) => !file.dir && file.name.toLowerCase() !== "medical_record.json"
-      );
-
-      if (!firstAttachment) {
-        throw new Error(
-          "Expected an attachment in the zip file, but none was found."
-        );
-      }
-
-      const blob = await firstAttachment.async("blob");
+      // Instead of extracting, directly download the decrypted ZIP.
+      const blob = new Blob([merged], { type: "application/zip" });
       const url = URL.createObjectURL(blob);
-      setViewerUrl(url);
-      setViewerMime(blob.type); // Use the MIME type from the blob itself
+
+      // Create a temporary link to download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${rec.diagnosis || "medical_record"}_${rec.seq}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Optional: show toast or log
+      console.log(`Downloaded record ${rec.seq} as ZIP.`);
 
       if (blob.type.startsWith("text/") || blob.type.includes("json")) {
         setTextPreview(await blob.text());
@@ -416,7 +413,7 @@ export default function Page() {
                 >
                   {attachmentStatus[rec.pda] === false
                     ? "No Attachments"
-                    : "View Encrypted File"}
+                    : "Download Encrypted File"}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -462,53 +459,6 @@ export default function Page() {
             </PaginationItem>
           </PaginationContent>
         </Pagination>
-      )}
-
-      {openViewer && viewerUrl && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur flex flex-col z-[9999]">
-          <div className="flex items-center gap-3 bg-black/40 text-white p-3">
-            <button onClick={() => setOpenViewer(false)}>✕ Close</button>
-            <a href={viewerUrl} download className="underline">
-              Download
-            </a>
-            <button onClick={() => setZoom((z) => z + 0.1)}>Zoom +</button>
-            <button onClick={() => setZoom((z) => Math.max(0.2, z - 0.1))}>
-              Zoom −
-            </button>
-            <button onClick={() => setZoom(1)}>Fit</button>
-          </div>
-
-          <div className="flex-1 flex justify-center items-center overflow-auto p-4">
-            {viewerMime?.includes("pdf") && (
-              <iframe
-                src={viewerUrl}
-                style={{ zoom }}
-                className="w-full h-full"
-              />
-            )}
-            {viewerMime?.startsWith("image/") && (
-              <img src={viewerUrl} style={{ transform: `scale(${zoom})` }} />
-            )}
-            {textPreview && (
-              <pre
-                className="text-white p-4 bg-black/30 rounded max-w-4xl overflow-auto whitespace-pre-wrap"
-                style={{ transform: `scale(${zoom})` }}
-              >
-                {textPreview}
-              </pre>
-            )}
-            {viewerMime?.startsWith("video/") && (
-              <video
-                src={viewerUrl}
-                controls
-                style={{ transform: `scale(${zoom})` }}
-              />
-            )}
-            {viewerMime?.startsWith("audio/") && (
-              <audio src={viewerUrl} controls />
-            )}
-          </div>
-        </div>
       )}
     </main>
   );

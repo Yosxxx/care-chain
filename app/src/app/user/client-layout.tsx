@@ -2,7 +2,13 @@
 "use client";
 
 import AppSidebar from "@/components/app-sidebar";
-import { Building2, ClipboardList, FilePen, FileText } from "lucide-react";
+import {
+  Building2,
+  ClipboardList,
+  FilePen,
+  FileText,
+  Users,
+} from "lucide-react";
 import Navbar from "@/components/navbar";
 import dynamic from "next/dynamic";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
@@ -29,11 +35,11 @@ const SIDEBAR_ITEMS = [
     href: "/user/records",
     icon: <FileText className="w-5 h-5" />,
   },
-  // {
-  //   label: "Trustees",
-  //   href: "/user/trustees",
-  //   icon: <Users className="w-5 h-5" />,
-  // },
+  {
+    label: "Trustees",
+    href: "#",
+    icon: <Users className="w-5 h-5" />,
+  },
   {
     label: "Access",
     href: "/user/access",
