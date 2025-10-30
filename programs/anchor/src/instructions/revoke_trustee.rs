@@ -7,8 +7,9 @@ pub fn trustee_revoke(ctx: Context<RevokeTrustee>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let trustee_acc = &mut ctx.accounts.trustee_account;
 
+    // only the patient themself can revoke
     require_keys_eq!(
-        ctx.accounts.patient.key(),
+        ctx.accounts.patient.patient_pubkey,
         ctx.accounts.authority.key(),
         TrusteeError::Unauthorized
     );
@@ -31,7 +32,7 @@ pub fn trustee_revoke(ctx: Context<RevokeTrustee>) -> Result<()> {
 #[derive(Accounts)]
 pub struct RevokeTrustee<'info> {
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer<'info>, 
 
     #[account(
         seeds = [SEED_PATIENT, patient.patient_pubkey.as_ref()],
@@ -41,7 +42,11 @@ pub struct RevokeTrustee<'info> {
 
     #[account(
         mut,
-        seeds = [SEED_TRUSTEE, patient.key().as_ref(), trustee_account.trustee.as_ref()],
+        seeds = [
+            SEED_TRUSTEE,
+            patient.patient_pubkey.as_ref(), 
+            trustee_account.trustee.as_ref()
+        ],
         bump = trustee_account.bump,
         constraint = !trustee_account.revoked @ TrusteeError::AlreadyRevoked
     )]

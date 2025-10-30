@@ -816,7 +816,8 @@
               },
               {
                 "kind": "account",
-                "path": "patient"
+                "path": "patient.patient_pubkey",
+                "account": "Patient"
               },
               {
                 "kind": "account",

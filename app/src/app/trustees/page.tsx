@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
-import {
-  useAnchorWallet,
-  useConnection,
-} from "@solana/wallet-adapter-react";
+import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import {
   PublicKey,
   SystemProgram,
@@ -35,21 +32,15 @@ export default function TrusteesPage() {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
 
-  const [trusteeStr, setTrusteeStr] = useState(""); // trustee wallet pubkey
+  const [trusteeStr, setTrusteeStr] = useState("");
   const [trusteeValid, setTrusteeValid] = useState<boolean | null>(null);
-
   const [trustees, setTrustees] = useState<TrusteeUi[]>([]);
   const [patientExists, setPatientExists] = useState<boolean | null>(null);
-
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [sig, setSig] = useState("");
-
-  // multisig staging
-  const [builtIx, setBuiltIx] = useState<TransactionInstruction | null>(null);
   const [pendingB64, setPendingB64] = useState("");
   const [shareUrl, setShareUrl] = useState("");
-
   const [loading, setLoading] = useState(false);
 
   const programId = useMemo(
@@ -71,13 +62,11 @@ export default function TrusteesPage() {
   );
 
   const patientPk = wallet?.publicKey ?? null;
-
   const patientPda = useMemo(
     () => (patientPk ? findPatientPda(programId, patientPk) : null),
     [programId, patientPk]
   );
 
-  // === helpers ===
   const ensureReady = () => {
     if (!program || !wallet) throw new Error("Program/wallet not ready");
     if (!patientPk) throw new Error("Connect wallet first");
@@ -116,8 +105,6 @@ export default function TrusteesPage() {
     setLoading(true);
     try {
       const filters: anchor.web3.GetProgramAccountsFilter[] = [
-        // Trustee struct layout:
-        // discriminator (8) + patient (32) => offset=8
         { memcmp: { offset: 8, bytes: patientPk.toBase58() } },
       ];
       const raw = await program.account.trustee.all(filters as any);
@@ -144,7 +131,6 @@ export default function TrusteesPage() {
     void loadTrustees();
   }, [program, patientPk?.toBase58()]);
 
-  // === validate trustee pubkey as user ===
   useEffect(() => {
     (async () => {
       setTrusteeValid(null);
@@ -159,59 +145,39 @@ export default function TrusteesPage() {
     })();
   }, [trusteeStr, program]);
 
-  // === prepare multi-sig tx ===
+  // === prepare multi-sig tx (Add Trustee) ===
   const prepareAddTrustee = async () => {
     try {
       setErr(""); setStatus(""); setSig("");
       setPendingB64(""); setShareUrl("");
-      setBuiltIx(null);
 
       ensureReady();
 
       const trusteePk = new PublicKey(trusteeStr.trim());
       if (!trusteeValid) throw new Error("This trustee wallet is not registered as a user.");
 
-      // PDA for Trustee (⚠️ must use patient wallet pubkey, not patient PDA)
       const trusteePda = findTrusteePda(programId, patientPk!, trusteePk);
 
       setStatus("Building instruction...");
-      // build instruction (not sending yet)
       const method = program!.methods
         .addTrustee()
         .accounts({
-          patient: patientPk!,           // patient signer
-          trustee: trusteePk,            // trustee signer (will sign later)
-          trusteeAccount: trusteePda,    // PDA to be created
+          patient: patientPk!,
+          trustee: trusteePk,
+          trusteeAccount: trusteePda,
           systemProgram: SystemProgram.programId,
         });
 
       const ix = await method.instruction();
-      setBuiltIx(ix);
-
-      // assemble a transaction signed by the patient ONLY
-      setStatus("Signing as patient...");
       const { blockhash } = await connection.getLatestBlockhash("finalized");
+      const tx = new Transaction({ feePayer: patientPk!, recentBlockhash: blockhash }).add(ix);
 
-      const tx = new Transaction({
-        feePayer: patientPk!,       // patient pays rent + fee
-        recentBlockhash: blockhash,
-      }).add(ix);
-
-      // sign with patient's wallet
       const signedByPatient = await wallet!.signTransaction(tx);
-
-      // serialize without requiring trustee sig yet
-      const b64 = Buffer
-        .from(signedByPatient.serialize({ requireAllSignatures: false }))
-        .toString("base64");
-
+      const b64 = Buffer.from(signedByPatient.serialize({ requireAllSignatures: false })).toString("base64");
       setPendingB64(b64);
 
-      // create share link like /co-sign-trustee?tx=...&trustee=...
       if (typeof window !== "undefined") {
-        const url = `${window.location.origin}/co-sign-trustee?tx=${encodeURIComponent(
-          b64
-        )}`;
+        const url = `${window.location.origin}/co-sign-trustee?tx=${encodeURIComponent(b64)}`;
         setShareUrl(url);
       }
 
@@ -221,28 +187,26 @@ export default function TrusteesPage() {
     }
   };
 
-  // === revoke trustee (single-signer: patient only) ===
+  // === Revoke Trustee ===
   const revokeTrustee = async (trusteePk: string) => {
     try {
       setErr(""); setStatus(""); setSig("");
       ensureReady();
 
-      const trusteePda = findTrusteePda(
-        programId,
-        patientPk!,
-        new PublicKey(trusteePk)
-      );
+      const trusteePda = findTrusteePda(programId, patientPk!, new PublicKey(trusteePk));
 
       const txSig = await program!.methods
         .revokeTrustee()
         .accounts({
-          patient: patientPk!,
+          authority: wallet!.publicKey,
+          patient: patientPda,
           trusteeAccount: trusteePda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       setSig(txSig);
-      setStatus("Trustee revoked.");
+      setStatus("✅ Trustee revoked successfully.");
       await loadTrustees();
     } catch (e: any) {
       setErr(e.message ?? String(e));
@@ -271,38 +235,22 @@ export default function TrusteesPage() {
           onChange={(e) => setTrusteeStr(e.target.value)}
         />
 
-        {trusteeValid === true && (
-          <div className="text-sm text-green-600">
-            ✅ Trustee is a registered user.
-          </div>
-        )}
-        {trusteeValid === false && (
-          <div className="text-sm text-red-600">
-            ❌ This wallet has no Patient account yet.
-          </div>
-        )}
+        {trusteeValid === true && <div className="text-sm text-green-600">✅ Trustee is a registered user.</div>}
+        {trusteeValid === false && <div className="text-sm text-red-600">❌ This wallet has no Patient account yet.</div>}
 
         <button
           onClick={prepareAddTrustee}
-          disabled={
-            !patientExists ||
-            !trusteeStr.trim() ||
-            trusteeValid !== true
-          }
+          disabled={!patientExists || !trusteeStr.trim() || trusteeValid !== true}
           className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
         >
           Prepare Add Trustee (patient signs)
         </button>
 
-        {status && (
-          <p className="text-sm whitespace-pre-wrap">{status}</p>
-        )}
+        {status && <p className="text-sm whitespace-pre-wrap">{status}</p>}
 
         {pendingB64 && (
           <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Base64 transaction (patient-signed). Send to the trustee:
-            </label>
+            <label className="text-sm font-medium">Base64 transaction (patient-signed). Send to the trustee:</label>
             <textarea
               readOnly
               className="w-full border rounded p-2 text-xs font-mono h-32"
@@ -311,12 +259,7 @@ export default function TrusteesPage() {
             {shareUrl && (
               <p className="text-xs break-all">
                 Or share this link:{" "}
-                <a
-                  className="underline"
-                  href={shareUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <a className="underline" href={shareUrl} target="_blank" rel="noreferrer">
                   {shareUrl}
                 </a>
               </p>
@@ -331,39 +274,19 @@ export default function TrusteesPage() {
           Tx: <span className="font-mono">{sig}</span>
         </p>
       )}
-      {err && (
-        <p className="text-sm text-red-600 whitespace-pre-wrap">{err}</p>
-      )}
+      {err && <p className="text-sm text-red-600 whitespace-pre-wrap">{err}</p>}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Trustees</h2>
         {loading && <p className="text-sm">Loading…</p>}
         <div className="space-y-3">
           {trustees.map((t) => (
-            <div
-              key={t.pubkey}
-              className="rounded border p-3 text-sm"
-            >
-              <p>
-                <b>PDA:</b>{" "}
-                <span className="font-mono">{t.pubkey}</span>
-              </p>
-              <p>
-                <b>Trustee:</b>{" "}
-                <span className="font-mono">{t.trustee}</span>
-              </p>
-              <p>
-                <b>Added By:</b>{" "}
-                <span className="font-mono">{t.addedBy}</span>
-              </p>
-              <p>
-                <b>Created At:</b>{" "}
-                {new Date(t.createdAt * 1000).toLocaleString()}
-              </p>
-              <p>
-                <b>Status:</b>{" "}
-                {t.revoked ? "Revoked" : "Active"}
-              </p>
+            <div key={t.pubkey} className="rounded border p-3 text-sm">
+              <p><b>PDA:</b> <span className="font-mono">{t.pubkey}</span></p>
+              <p><b>Trustee:</b> <span className="font-mono">{t.trustee}</span></p>
+              <p><b>Added By:</b> <span className="font-mono">{t.addedBy}</span></p>
+              <p><b>Created At:</b> {new Date(t.createdAt * 1000).toLocaleString()}</p>
+              <p><b>Status:</b> {t.revoked ? "Revoked" : "Active"}</p>
 
               {!t.revoked && (
                 <button
@@ -375,9 +298,7 @@ export default function TrusteesPage() {
               )}
             </div>
           ))}
-          {!loading && trustees.length === 0 && (
-            <p className="text-sm">No trustees found.</p>
-          )}
+          {!loading && trustees.length === 0 && <p className="text-sm">No trustees found.</p>}
         </div>
       </section>
     </main>
