@@ -10,6 +10,7 @@ import {
   findHospitalPda,
   findPatientPda,
   findConfigPda,
+  findTrusteePda,
 } from "@/lib/pda";
 import { SCOPE_OPTIONS } from "@/lib/constants";
 import dynamic from "next/dynamic";
@@ -30,8 +31,8 @@ type HospitalUi = {
 type GrantUi = {
   pubkey: string;
   scope: number;
-  patient: string; // PDA
-  grantee: string; // hospital authority
+  patient: string;
+  grantee: string;
   createdBy: string;
   createdAt: number;
   expiresAt?: number | null;
@@ -43,12 +44,11 @@ export default function AccessManagerPage() {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
 
-  const [granteeStr, setGranteeStr] = useState(""); // hospital authority (optional filter)
-  const [expiresStr, setExpiresStr] = useState(""); // epoch seconds (optional)
+  const [granteeStr, setGranteeStr] = useState("");
+  const [expiresStr, setExpiresStr] = useState("");
   const [err, setErr] = useState("");
   const [sig, setSig] = useState("");
   const [hospital, setHospital] = useState<HospitalUi>(null);
-
   const [patientExists, setPatientExists] = useState<boolean | null>(null);
   const [grants, setGrants] = useState<GrantUi[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,14 +70,12 @@ export default function AccessManagerPage() {
     [provider]
   );
 
-  // Connected patient wallet & PDA
   const patientPk = wallet?.publicKey ?? null;
   const patientPda = useMemo(
     () => (patientPk ? findPatientPda(programId, patientPk) : null),
     [programId, patientPk]
   );
 
-  // Parse optional grantee filter
   const grantee = useMemo(() => {
     try {
       const t = granteeStr.trim();
@@ -87,13 +85,19 @@ export default function AccessManagerPage() {
     }
   }, [granteeStr]);
 
-  // ---- Check if PATIENT is registered (Patient account exists) ----
+  // Helper: check if an account exists
+  async function accountExists(pubkey: PublicKey): Promise<boolean> {
+    const info = await connection.getAccountInfo(pubkey);
+    return !!info;
+  }
+
+  // --- Check if patient registered
   useEffect(() => {
     (async () => {
       setPatientExists(null);
       if (!program || !patientPda) return;
       try {
-        // @ts-expect-error anchor account typing
+        // @ts-expect-error anchor typing
         const acc = await program.account.patient.fetchNullable(patientPda);
         setPatientExists(!!acc);
       } catch {
@@ -102,16 +106,19 @@ export default function AccessManagerPage() {
     })();
   }, [program, patientPda]);
 
-  // ---- Load hospital preview if a grantee is entered ----
+  // --- Load hospital preview
   useEffect(() => {
     (async () => {
       setHospital(null);
       if (!program || !grantee) return;
       try {
         const hospitalPda = findHospitalPda(program.programId, grantee);
-        // @ts-expect-error anchor account typing
+        // @ts-expect-error anchor typing
         const acc = await program.account.hospital.fetchNullable(hospitalPda);
-        if (!acc) { setHospital(null); return; }
+        if (!acc) {
+          setHospital(null);
+          return;
+        }
         setHospital({
           pubkey: hospitalPda.toBase58(),
           authority: grantee.toBase58(),
@@ -125,7 +132,7 @@ export default function AccessManagerPage() {
     })();
   }, [program, grantee]);
 
-  // ---- Load GRANTS (always by Patient PDA; optionally by grantee) ----
+  // --- Load grants
   const loadGrants = async () => {
     setLoading(true);
     setLoadErr("");
@@ -136,9 +143,6 @@ export default function AccessManagerPage() {
         return;
       }
 
-      // Build memcmp filters: patient (PDA) always; grantee if provided
-      // Layout: adjust offsets to your actual Grant struct.
-      // Commonly: discriminator(8) + patient(32) + grantee(32) + scope(u8) + ...
       const filters: anchor.web3.GetProgramAccountsFilter[] = [
         { memcmp: { offset: 8, bytes: patientPda.toBase58() } },
       ];
@@ -158,8 +162,6 @@ export default function AccessManagerPage() {
         revoked: !!r.account.revoked,
         revokedAt: r.account.revokedAt ? Number(r.account.revokedAt) : null,
       }));
-
-      // Sort newest first
       rows.sort((a, b) => b.createdAt - a.createdAt);
       setGrants(rows);
     } catch (e: any) {
@@ -170,20 +172,18 @@ export default function AccessManagerPage() {
     }
   };
 
-  // auto-load on program/patient/grantee change
   useEffect(() => {
     void loadGrants();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program, patientPda?.toBase58(), grantee?.toBase58()]);
 
-  // ---- UI state for toggles ----
   const current: Record<number, boolean> = useMemo(() => {
     const m: Record<number, boolean> = {};
     for (const g of grants) if (!g.revoked) m[g.scope] = true;
     return m;
   }, [grants]);
+
   const [desired, setDesired] = useState<Record<number, boolean>>({});
-  const flip = (bit: number) => setDesired(d => ({ ...d, [bit]: !d[bit] }));
+  const flip = (bit: number) => setDesired((d) => ({ ...d, [bit]: !d[bit] }));
 
   const bnOpt = (s: string) => {
     const t = s.trim();
@@ -207,21 +207,30 @@ export default function AccessManagerPage() {
   };
 
   const upsertOne = async (scopeByte: number) => {
-    setErr(""); setSig("");
+    setErr("");
+    setSig("");
     ensureReady();
     await assertHospitalRegistered();
 
     const grantPda = findGrantPda(programId, patientPda!, grantee!, scopeByte);
     const configPda = findConfigPda(programId);
+    const trusteePda = findTrusteePda(programId, patientPk!, wallet!.publicKey);
+
+    // ✅ Check if trustee PDA exists on chain
+    const trusteeExists = await accountExists(trusteePda);
+    console.log("Including trustee account:", trusteeExists ? trusteePda.toBase58() : "none");
 
     const tx = await program!.methods
-      .grantAccess(scopeByte, bnOpt(expiresStr))
+      .grantAccess(scopeByte)
       .accounts({
-        authority: wallet!.publicKey,   // patient signs
+        authority: wallet!.publicKey,
         config: configPda,
         patient: patientPda!,
         grant: grantPda,
         grantee: grantee!,
+        ...(trusteeExists
+          ? { trusteeAccount: trusteePda }
+          : { trusteeAccount: null }),
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -230,7 +239,8 @@ export default function AccessManagerPage() {
   };
 
   const revokeOne = async (scopeByte: number) => {
-    setErr(""); setSig("");
+    setErr("");
+    setSig("");
     ensureReady();
     await assertHospitalRegistered();
 
@@ -242,7 +252,7 @@ export default function AccessManagerPage() {
         patient: patientPda!,
         grant: grantPda,
         grantee: grantee!,
-        authority: wallet!.publicKey,   // patient signs
+        authority: wallet!.publicKey,
       })
       .rpc();
 
@@ -289,7 +299,6 @@ export default function AccessManagerPage() {
         <WalletMultiButton />
       </header>
 
-      {/* Patient registration status */}
       {patientExists === false && (
         <div className="rounded border border-red-600/40 bg-red-600/10 p-3 text-sm text-red-600">
           You haven’t registered as a patient yet. Go to <b>Patients (Upsert)</b> and create your patient record first.
@@ -299,7 +308,7 @@ export default function AccessManagerPage() {
       <div className="grid gap-3">
         <input
           className="rounded border px-3 py-2 font-mono text-sm"
-          placeholder="grantee (hospital authority pubkey) — leave empty to view all"
+          placeholder="grantee (hospital authority pubkey)"
           value={granteeStr}
           onChange={(e) => setGranteeStr(e.target.value)}
         />
@@ -310,7 +319,6 @@ export default function AccessManagerPage() {
           onChange={(e) => setExpiresStr(e.target.value)}
         />
 
-        {/* Hospital verification (only if a grantee is typed) */}
         {granteeStr.trim() && (
           <div className="rounded border p-3 text-sm">
             {hospital ? (
@@ -323,7 +331,9 @@ export default function AccessManagerPage() {
                 <div>Created: {new Date(hospital.createdAt * 1000).toLocaleString()}</div>
               </>
             ) : (
-              <div className="text-yellow-600">Hospital not found for this authority (grants will be blocked).</div>
+              <div className="text-yellow-600">
+                Hospital not found for this authority (grants will be blocked).
+              </div>
             )}
           </div>
         )}
@@ -355,7 +365,7 @@ export default function AccessManagerPage() {
           </button>
           <button
             onClick={revokeAll}
-            disabled={!canAct || grants.every(g => g.revoked) || !grantee}
+            disabled={!canAct || grants.every((g) => g.revoked) || !grantee}
             className="rounded border px-4 py-2 disabled:opacity-50"
           >
             Revoke all for this hospital
@@ -375,20 +385,49 @@ export default function AccessManagerPage() {
         {loadErr && <p className="text-sm text-red-600">{loadErr}</p>}
         {loading && <p className="text-sm">Loading…</p>}
 
-        {/* If a grantee is set, show grants for that specific hospital; else show ALL hospital grants for this patient */}
         <div className="space-y-3">
           {grants.map((g) => (
             <div key={g.pubkey} className="rounded border p-3 text-sm">
               <p className="font-medium">
-                Scope: {g.scope === 1 ? "Read" : g.scope === 2 ? "Write" : g.scope === 4 ? "Admin" : g.scope}
+                Scope:{" "}
+                {g.scope === 1
+                  ? "Read"
+                  : g.scope === 2
+                    ? "Write"
+                    : g.scope === 4
+                      ? "Admin"
+                      : g.scope}
               </p>
-              <p><b>Grant PDA:</b> <span className="font-mono">{g.pubkey}</span></p>
-              <p><b>Patient (PDA):</b> <span className="font-mono">{g.patient}</span></p>
-              <p><b>Grantee (Authority):</b> <span className="font-mono">{g.grantee}</span></p>
-              <p><b>Created By:</b> <span className="font-mono">{g.createdBy}</span></p>
-              <p><b>Created At:</b> {new Date(g.createdAt * 1000).toLocaleString()}</p>
-              <p><b>Expires At:</b> {g.expiresAt ? new Date(g.expiresAt * 1000).toLocaleString() : "—"}</p>
-              <p><b>Status:</b> {g.revoked ? `Revoked${g.revokedAt ? ` @ ${new Date(g.revokedAt * 1000).toLocaleString()}` : ""}` : "Active"}</p>
+              <p>
+                <b>Grant PDA:</b> <span className="font-mono">{g.pubkey}</span>
+              </p>
+              <p>
+                <b>Patient (PDA):</b> <span className="font-mono">{g.patient}</span>
+              </p>
+              <p>
+                <b>Grantee (Authority):</b>{" "}
+                <span className="font-mono">{g.grantee}</span>
+              </p>
+              <p>
+                <b>Created By:</b>{" "}
+                <span className="font-mono">{g.createdBy}</span>
+              </p>
+              <p>
+                <b>Created At:</b>{" "}
+                {new Date(g.createdAt * 1000).toLocaleString()}
+              </p>
+              <p>
+                <b>Expires At:</b>{" "}
+                {g.expiresAt
+                  ? new Date(g.expiresAt * 1000).toLocaleString()
+                  : "—"}
+              </p>
+              <p>
+                <b>Status:</b>{" "}
+                {g.revoked
+                  ? `Revoked${g.revokedAt ? ` @ ${new Date(g.revokedAt * 1000).toLocaleString()}` : ""}`
+                  : "Active"}
+              </p>
 
               {!g.revoked && grantee && (
                 <button

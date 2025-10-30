@@ -384,32 +384,7 @@
         },
         {
           "name": "trustee_account",
-          "optional": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  114,
-                  117,
-                  115,
-                  116,
-                  101,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "patient.patient_pubkey",
-                "account": "Patient"
-              },
-              {
-                "kind": "account",
-                "path": "authority"
-              }
-            ]
-          }
+          "optional": true
         },
         {
           "name": "system_program",

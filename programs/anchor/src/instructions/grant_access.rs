@@ -8,12 +8,19 @@ pub fn access_grant(ctx: Context<GrantAccess>, scope: u8) -> Result<()> {
     let authority = ctx.accounts.authority.key();
     let patient_pk = ctx.accounts.patient.patient_pubkey;
 
+    // Determine if caller is patient or trustee
     let is_patient = authority == patient_pk;
-    let is_trustee = ctx.accounts.trustee_account.is_some();
+    let trustee_acc_opt = &ctx.accounts.trustee_account;
+    let is_trustee = trustee_acc_opt.is_some();
 
+    // Must be either patient or trustee
     require!(is_patient || is_trustee, AccessError::UnauthorizedGrant);
 
-    if is_trustee {
+    if let Some(trustee_acc) = trustee_acc_opt.as_ref() {
+        require_keys_eq!(trustee_acc.patient, patient_pk, TrusteeError::Unauthorized);
+        require_keys_eq!(trustee_acc.trustee, authority, TrusteeError::Unauthorized);
+        require!(!trustee_acc.revoked, TrusteeError::Revoked);
+
         require!(scope == SCOPE_READ, TrusteeError::ReadOnly);
     }
 
@@ -27,13 +34,10 @@ pub fn access_grant(ctx: Context<GrantAccess>, scope: u8) -> Result<()> {
     grant.patient = ctx.accounts.patient.key();
     grant.grantee = ctx.accounts.grantee.key();
     grant.scope = scope;
-
-    grant.created_by = ctx.accounts.authority.key();
+    grant.created_by = authority;
     grant.created_at = now;
-
     grant.revoked = false;
     grant.revoked_at = None;
-
     grant.bump = ctx.bumps.grant;
 
     if is_trustee {
@@ -86,13 +90,9 @@ pub struct GrantAccess<'info> {
         bump
     )]
     pub grant: Account<'info, Grant>,
+
     pub grantee: SystemAccount<'info>,
 
-    #[account(
-        seeds = [SEED_TRUSTEE, patient.patient_pubkey.key().as_ref(), authority.key().as_ref()],
-        bump = trustee_account.bump,
-        constraint = !trustee_account.revoked @ TrusteeError::Revoked
-    )]
     pub trustee_account: Option<Account<'info, Trustee>>,
 
     pub system_program: Program<'info, System>,
