@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import sodium from "libsodium-wrappers";
-import JSZip from "jszip";
 import { useProgram } from "@/hooks/useProgram";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
@@ -24,8 +23,10 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { ChevronsUpDown, ExternalLink } from "lucide-react";
+import { ChevronsUpDown, ExternalLink, Search } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner"; // ✅ for user feedback
+import { StatusBanner } from "@/components/status-banner";
 
 type Rec = {
   seq: number;
@@ -72,19 +73,15 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const perPage = 10;
+  const perPage = 5;
 
-  // State to track if a record has viewable/downloadable attachments
+  // Track which record is currently downloading
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  // State to track if record likely has attachment
   const [attachmentStatus, setAttachmentStatus] = useState<
     Record<string, boolean>
   >({});
-
-  // Viewer states
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [viewerMime, setViewerMime] = useState<string | null>(null);
-  const [textPreview, setTextPreview] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [openViewer, setOpenViewer] = useState(false);
 
   // ================== FETCH ON-CHAIN RECORDS ==================
   useEffect(() => {
@@ -104,7 +101,6 @@ export default function Page() {
         }
         setPatientOk(true);
 
-        // get seq
         const seqPda = findPatientSeqPda(programId, patientPda);
         // @ts-expect-error
         const seqAcc = await program.account.patientSeq.fetch(seqPda);
@@ -123,7 +119,6 @@ export default function Page() {
           // @ts-expect-error
           const rec = await program.account.record.fetch(recordPda);
 
-          // Fetch meta.json from IPFS
           let meta: any = {};
           try {
             const metaRes = await fetch(ipfsGateway(rec.metaCid), {
@@ -156,37 +151,28 @@ export default function Page() {
     })();
   }, [ready, program, programId.toBase58(), publicKey?.toBase58()]);
 
-  // ================== CHECK FOR ATTACHMENTS (HEURISTIC) ==================
+  // ================== CHECK ATTACHMENTS ==================
   useEffect(() => {
     if (records.length === 0) {
       setAttachmentStatus({});
       return;
     }
+    const THRESHOLD_NO_ATTACHMENT = 5120;
+    const newStatus: Record<string, boolean> = {};
+    for (const rec of records)
+      newStatus[rec.pda] = rec.sizeBytes > THRESHOLD_NO_ATTACHMENT;
+    setAttachmentStatus(newStatus);
+  }, [records]);
 
-    const THRESHOLD_NO_ATTACHMENT = 5120; // 5 KB
-    const newAttachmentStatus: Record<string, boolean> = {};
+  // ================== DECRYPT & DOWNLOAD ==================
+  async function decryptAndDownload(rec: Rec) {
+    if (attachmentStatus[rec.pda] === false) return;
 
-    for (const rec of records) {
-      // If size is very small, assume NO attachments.
-      // Otherwise, assume YES.
-      newAttachmentStatus[rec.pda] = rec.sizeBytes > THRESHOLD_NO_ATTACHMENT;
-    }
-    setAttachmentStatus(newAttachmentStatus);
-  }, [records]); // Dependency: run when records change
-
-  // ================== DECRYPT & VIEW ==================
-  async function decryptAndView(rec: Rec) {
-    // Guard clause: Don't run if we know there are no attachments
-    if (attachmentStatus[rec.pda] === false) {
-      return;
-    }
     try {
-      setErr("");
-      setOpenViewer(true);
-      setViewerUrl(null);
-      setViewerMime(null);
-      setTextPreview(null);
-      setZoom(1);
+      setDownloading(rec.pda);
+      toast.loading("Decrypting and preparing file...", {
+        id: rec.pda,
+      });
 
       await sodium.ready;
       const meta = await (
@@ -240,11 +226,8 @@ export default function Page() {
         p += c.length;
       }
 
-      // Instead of extracting, directly download the decrypted ZIP.
       const blob = new Blob([merged], { type: "application/zip" });
       const url = URL.createObjectURL(blob);
-
-      // Create a temporary link to download
       const a = document.createElement("a");
       a.href = url;
       a.download = `${rec.diagnosis || "medical_record"}_${rec.seq}.zip`;
@@ -253,14 +236,17 @@ export default function Page() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Optional: show toast or log
-      console.log(`Downloaded record ${rec.seq} as ZIP.`);
-
-      if (blob.type.startsWith("text/") || blob.type.includes("json")) {
-        setTextPreview(await blob.text());
-      }
+      toast.success("Decrypted and downloaded successfully!", {
+        id: rec.pda,
+      });
     } catch (e: any) {
+      console.error(e);
+      toast.error(`Error: ${e?.message ?? "Decryption failed"}`, {
+        id: rec.pda,
+      });
       setErr(e?.message ?? String(e));
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -296,27 +282,37 @@ export default function Page() {
 
   // ================== UI ==================
   return (
-    <main className="space-y-6 my-5">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">My Records</h1>
-          <p>View and decrypt your medical records securely</p>
+    <main className=" my-5">
+      <header className="font-architekt p-2 border rounded-xs mt-5">
+        <div className="flex font-bold gap-x-2 items-center">
+          <Search size={20} /> Search for Records
         </div>
+      </header>
+
+      <div className="mt-2">
+        {!publicKey && (
+          <StatusBanner type="warning">
+            ⚠️ Connect wallet to load your records.
+          </StatusBanner>
+        )}
+
+        {publicKey && patientOk === false && (
+          <StatusBanner type="error">
+            ❌ This wallet is not registered as a patient yet.
+          </StatusBanner>
+        )}
+
+        {err && <StatusBanner type="error">⚠️ {err}</StatusBanner>}
+
+        {patientOk && records.length > 0 && (
+          <StatusBanner type="success">
+            ✅ Successfully fetched {records.length} record
+            {records.length > 1 ? "s" : ""}.
+          </StatusBanner>
+        )}
       </div>
 
-      {!publicKey && (
-        <div className="text-yellow-600 border border-yellow-600/40 bg-yellow-600/10 p-2 rounded-xs">
-          Connect wallet to load your records.
-        </div>
-      )}
-      {publicKey && patientOk === false && (
-        <div className="text-red-600 border border-red-600/40 bg-red-600/10 p-2 rounded-xs">
-          This wallet is not registered as a patient yet.
-        </div>
-      )}
-      {err && <p className="text-red-600 text-sm">{err}</p>}
-
-      <div className="flex gap-2">
+      <div className="flex gap-2  mt-2">
         <Input
           placeholder="Search records..."
           value={search}
@@ -342,7 +338,7 @@ export default function Page() {
         />
       </div>
 
-      <div className="flex flex-col gap-y-4">
+      <div className="flex flex-col gap-y-4 mt-5 mb-5">
         {paginated.map((rec) => (
           <Collapsible key={rec.pda} className="border p-4 rounded-xs">
             <CollapsibleTrigger className="w-full flex justify-between text-left items-center gap-4">
@@ -406,14 +402,19 @@ export default function Page() {
               )}
 
               <div className="pt-3 border-t mt-3">
-                {/* --- MODIFIED BUTTON --- */}
                 <Button
-                  onClick={() => decryptAndView(rec)}
-                  disabled={attachmentStatus[rec.pda] === false}
+                  onClick={() => decryptAndDownload(rec)}
+                  disabled={
+                    attachmentStatus[rec.pda] === false ||
+                    downloading === rec.pda
+                  }
+                  variant={"secondary"}
                 >
                   {attachmentStatus[rec.pda] === false
                     ? "No Attachments"
-                    : "Download Encrypted File"}
+                    : downloading === rec.pda
+                    ? "Decrypting..."
+                    : "Download & Decrypt"}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -421,7 +422,6 @@ export default function Page() {
         ))}
       </div>
 
-      {/* Pagination */}
       {filteredRecords.length > perPage && (
         <Pagination className="mb-5">
           <PaginationContent>
