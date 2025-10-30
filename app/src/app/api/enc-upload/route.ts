@@ -1,10 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import sodium from "libsodium-wrappers";
-import { VaultKmsAdapter } from "@/lib/vaultKmsAdapter";
 import { PinataSDK } from "pinata";
 import { Blob, File } from "buffer";
-
 
 export const runtime = "nodejs";
 
@@ -22,22 +20,20 @@ function deriveNonce(base: Uint8Array, idx: number) {
 }
 
 export async function GET() {
-  console.log("[enc-upload] GET hit");
-  return NextResponse.json({ ok: true, route: "/create-record/enc-upload" });
+  return NextResponse.json({ ok: true, route: "/api/enc-upload" });
 }
 
 export async function POST(req: Request) {
-const fail = (where: string, e: unknown, status = 500) => {
-  console.error(`[enc-upload] ${where}:`, e);
-  const msg =
-    e instanceof Error
-      ? e.message
-      : typeof e === "string"
-      ? e
-      : JSON.stringify(e);
-  return NextResponse.json({ error: `${where}: ${msg}` }, { status });
-};
-
+  const fail = (where: string, e: unknown, status = 500) => {
+    console.error(`[enc-upload] ${where}:`, e);
+    const msg =
+      e instanceof Error
+        ? e.message
+        : typeof e === "string"
+        ? e
+        : JSON.stringify(e);
+    return NextResponse.json({ error: `${where}: ${msg}` }, { status });
+  };
 
   console.log("[enc-upload] POST hit");
 
@@ -48,11 +44,11 @@ const fail = (where: string, e: unknown, status = 500) => {
   let contentType = "application/octet-stream";
   let patientPk_b64: string | null;
   let rsCreatorPk_b64: string | null;
-  let hospital_name: string = "";
-  let doctor_name: string = "";
-  let diagnosis: string = "";
-  let keywords: string = "";
-  let description: string = "";
+  let hospital_name = "";
+  let doctor_name = "";
+  let diagnosis = "";
+  let keywords = "";
+  let description = "";
 
   try {
     const form = await req.formData();
@@ -67,21 +63,11 @@ const fail = (where: string, e: unknown, status = 500) => {
     keywords = (form.get("keywords") as string) || "";
     description = (form.get("description") as string) || "";
 
-    if (!file) return fail("A: file missing", new Error("file missing"), 400);
+    if (!file) return fail("A: file missing", "file missing", 400);
     if (!patientPk_b64)
-      return fail(
-        "A: patientPk_b64 missing",
-        new Error("patientPk_b64 missing"),
-        400
-      );
+      return fail("A: patientPk_b64 missing", "patientPk_b64 missing", 400);
     if (!rsCreatorPk_b64)
-      return fail(
-        "A: rsCreatorPk_b64 missing",
-        new Error("rsCreatorPk_b64 missing"),
-        400
-      );
-
-    console.log("[enc-upload] A ok");
+      return fail("A: rsCreatorPk_b64 missing", "rsCreatorPk_b64 missing", 400);
   } catch (e) {
     return fail("A parse formData", e);
   }
@@ -92,7 +78,7 @@ const fail = (where: string, e: unknown, status = 500) => {
   let plainBuf: Buffer;
   try {
     await sodium.ready;
-    plainBuf = Buffer.from(await file.arrayBuffer());
+    plainBuf = Buffer.from(await file!.arrayBuffer());
     console.log("[enc-upload] B ok size =", plainBuf.length);
   } catch (e) {
     return fail("B read/crypto init", e);
@@ -136,13 +122,12 @@ const fail = (where: string, e: unknown, status = 500) => {
 
     cipherHash = sodium.crypto_generichash_final(gh, 32);
     recordEnc = Buffer.concat(chunks);
-    console.log("[enc-upload] C ok encBytes =", recordEnc.length);
   } catch (e) {
     return fail("C encrypt/hash", e);
   }
 
   // ==========================================
-  // D) KMS wrap DEK + sealed-box (per grantee)
+  // D) KMS wrap DEK + sealed-box per grantee
   // ==========================================
   let Wkms_bytes!: Uint8Array;
   let edekPatient_b64!: string;
@@ -150,52 +135,48 @@ const fail = (where: string, e: unknown, status = 500) => {
   let kmsRef!: string;
 
   try {
-    const kms = await VaultKmsAdapter.init(); // needs VAULT_ADDR, VAULT_TOKEN, VAULT_TRANSIT_KEY
+    // 🔥 Lazy import to avoid build-time Vault evaluation
+    const { VaultKmsAdapter } = await import("@/lib/vaultKmsAdapter");
+    const kms = await VaultKmsAdapter.init();
     kmsRef = kms.keyRef;
 
-    // Wrap the DEK inside KMS (opaque bytes "vault:vN:...")
     Wkms_bytes = await kms.encryptKey(DEK, { recordId: aadStr });
-    // wipe plaintext DEK
-    DEK.fill(0);
+    DEK.fill(0); // wipe plaintext DEK
 
     const seal = (pk_b64: string) => {
       const edPk = Buffer.from(pk_b64, "base64");
       const curvePk = sodium.crypto_sign_ed25519_pk_to_curve25519(edPk);
       const sealed = sodium.crypto_box_seal(Wkms_bytes, curvePk);
-      return b64(sealed); // base64 for JSON
+      return b64(sealed);
     };
 
     edekPatient_b64 = seal(patientPk_b64!);
     edekHospital_b64 = seal(rsCreatorPk_b64!);
-
-    console.log("[enc-upload] D ok");
   } catch (e) {
     return fail("D kms/sealed-box", e);
   }
 
   // ============================
-  // E) Upload to Pinata (SDK v4+)
+  // E) Upload to Pinata
   // ============================
-  let cidEnc = "", metaCid = "";
+  let cidEnc = "",
+    metaCid = "";
   try {
     const pinata = new PinataSDK({
       pinataJwt: process.env.PINATA_JWT!,
-      pinataGateway: process.env.PINATA_GATEWAY ?? "example-gateway.mypinata.cloud",
+      pinataGateway:
+        process.env.PINATA_GATEWAY ?? "example-gateway.mypinata.cloud",
     });
 
-    // ciphertext → Blob → File (SDK requires Web File interface)
     const blob = new Blob([recordEnc], { type: "application/octet-stream" });
-    const file = new File([blob], "record.enc", { type: "application/octet-stream" });
+    const fileUpload = new File([blob], "record.enc", {
+      type: "application/octet-stream",
+    });
 
-    // Upload encrypted file (public network)
-   // @ts-expect-error Node File type mismatch with Web File
-    const uploadFile = await pinata.upload.public.file(file).name("record.enc");
-
-
-    // The new response schema uses `cid` not `IpfsHash`
+    // @ts-expect-error Node File vs Web File
+    const uploadFile = await pinata.upload.public.file(fileUpload).name("record.enc");
     cidEnc = uploadFile.cid;
 
-    // --- Metadata JSON Upload ---
     const meta = {
       alg: "xchacha20-poly1305",
       chunk_size: CHUNK_SIZE,
@@ -219,15 +200,12 @@ const fail = (where: string, e: unknown, status = 500) => {
 
     const uploadMeta = await pinata.upload.public.json(meta).name("meta.json");
     metaCid = uploadMeta.cid;
-
-    console.log("[enc-upload] E ok", { cidEnc, metaCid });
   } catch (e) {
     return fail("E pinata upload", e);
   }
 
-
   // ============================
-  // F) Return plain JSON result
+  // F) Return result
   // ============================
   try {
     return NextResponse.json({
@@ -235,12 +213,10 @@ const fail = (where: string, e: unknown, status = 500) => {
       metaCid,
       sizeBytes: recordEnc.length,
       cipherHashHex: toHex(cipherHash),
-
       edekRoot_b64: b64(Wkms_bytes),
       edekPatient_b64,
       edekHospital_b64,
-
-      kmsRef, // string
+      kmsRef,
     });
   } catch (e) {
     return fail("F build response", e);

@@ -15,14 +15,16 @@ export async function POST(req: Request) {
     }
 
     const wrapped = Buffer.from(wrapped_dek_b64, "base64");
+
+    // 🔥 Lazy import: avoids build-time evaluation
+    const { VaultKmsAdapter } = await import("@/lib/vaultKmsAdapter");
     const kms = await VaultKmsAdapter.init();
 
-    // IMPORTANT: pass the SAME context used at encrypt time
     const dek = await kms.decryptKey(wrapped, { recordId });
-
     return NextResponse.json({ dek_b64: Buffer.from(dek).toString("base64") });
   } catch (e: any) {
     console.error("[unwrap-dek] error:", e);
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
   }
 }
+

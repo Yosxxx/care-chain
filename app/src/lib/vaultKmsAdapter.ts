@@ -32,16 +32,25 @@ export class VaultKmsAdapter implements KmsAdapter {
     addr   = process.env.VAULT_ADDR || "",
     token  = process.env.VAULT_TOKEN || ""
   ): Promise<KmsAdapter> {
-    if (!addr.startsWith("http")) {
-      console.warn("[VaultKmsAdapter] VAULT_ADDR not set, using DevKmsAdapter (no Vault)");
+    // --- Fallback when Vault is unavailable ---
+    if (!addr || !addr.startsWith("http")) {
+      console.warn("[VaultKmsAdapter] VAULT_ADDR missing — using DevKmsAdapter (mock mode)");
       return new DevKmsAdapter();
     }
     if (!token) {
-      console.warn("[VaultKmsAdapter] VAULT_TOKEN missing, using DevKmsAdapter");
+      console.warn("[VaultKmsAdapter] VAULT_TOKEN missing — using DevKmsAdapter (mock mode)");
       return new DevKmsAdapter();
     }
-    return new VaultKmsAdapter(keyRef, addr, token);
+
+    try {
+      // Try constructing adapter only when fully valid
+      return new VaultKmsAdapter(keyRef, addr, token);
+    } catch (e) {
+      console.warn("[VaultKmsAdapter] init failed, using DevKmsAdapter instead:", e);
+      return new DevKmsAdapter();
+    }
   }
+
 
   // ------- helper internal -------
   private mount() {
