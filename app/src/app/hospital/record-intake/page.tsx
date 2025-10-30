@@ -621,11 +621,27 @@ export default function Page() {
             />
           </div>
 
-          <p className="text-xs text-muted-foreground break-all max-w-[90%] text-center">
-            {coSignBase64.slice(0, 64)}...
-          </p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-muted-foreground break-all max-w-[90%] text-center">
+              {coSignBase64.slice(0, 64)}...
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(coSignBase64);
+                  toast.success("Copied QR payload to clipboard");
+                } catch {
+                  toast.error("Failed to copy to clipboard");
+                }
+              }}
+            >
+              Copy Payload
+            </Button>
+          </div>
 
-          <Button variant="secondary" onClick={() => setView("form")}>
+          <Button variant="outline" onClick={() => setView("form")}>
             Back to Form
           </Button>
         </div>
@@ -650,30 +666,24 @@ export default function Page() {
 
           {/* --- STATUS BANNERS --- */}
           <div className="space-y-2 mb-4">
-            {hospitalOk === false && (
+            {hospitalOk === false ? (
               <StatusBanner type="error">
                 ❌ This wallet is not a registered hospital authority.
               </StatusBanner>
-            )}
-
-            {patientAccountOk === false && record?.patient_pubkey && (
+            ) : patientAccountOk === false && record?.patient_pubkey ? (
               <StatusBanner type="error">
                 ⚠️ Patient not registered. Ask them to upsert on the Patients
                 page.
               </StatusBanner>
-            )}
-
-            {grantOk === false && (
+            ) : grantOk === false ? (
               <StatusBanner type="warning">
                 ⚠️ Write grant missing:{" "}
                 {grantErr ||
                   "Patient must grant Write access to this hospital."}
               </StatusBanner>
-            )}
-
-            {hospitalOk && patientAccountOk && grantOk && (
+            ) : hospitalOk && patientAccountOk && grantOk ? (
               <StatusBanner type="success">All Verified</StatusBanner>
-            )}
+            ) : null}
           </div>
 
           {/* --- RECORD FORM --- */}
@@ -698,14 +708,14 @@ export default function Page() {
                         }
                       />
                       <Button
-                        variant="secondary"
+                        variant="outline"
                         onClick={() => handleReset("patient_pubkey")}
                       >
                         Revert
                       </Button>
                     </div>
 
-                    {patientCheckStatus && (
+                    {/* {patientCheckStatus && (
                       <p
                         className={`mt-1 text-sm ${
                           patientCheckStatus.startsWith("✅")
@@ -717,7 +727,7 @@ export default function Page() {
                       >
                         {patientCheckStatus}
                       </p>
-                    )}
+                    )} */}
                   </div>
                 </section>
 
@@ -739,12 +749,14 @@ export default function Page() {
                           }
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("hospital_id")}
                         >
                           Revert
                         </Button>
-                        <Button onClick={handleFill}>Fill</Button>
+                        <Button onClick={handleFill} variant="secondary">
+                          Fill
+                        </Button>
                       </div>
                     </div>
 
@@ -759,7 +771,7 @@ export default function Page() {
                           }
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("doctor_name")}
                         >
                           Revert
@@ -778,12 +790,14 @@ export default function Page() {
                           }
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("hospital_pubkey")}
                         >
                           Revert
                         </Button>
-                        <Button onClick={handleFill}>Fill</Button>
+                        <Button onClick={handleFill} variant="secondary">
+                          Fill
+                        </Button>
                       </div>
                     </div>
 
@@ -798,7 +812,7 @@ export default function Page() {
                           }
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("doctor_id")}
                         >
                           Revert
@@ -817,12 +831,14 @@ export default function Page() {
                           }
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("hospital_name")}
                         >
                           Revert
                         </Button>
-                        <Button onClick={handleFill}>Fill</Button>
+                        <Button onClick={handleFill} variant="secondary">
+                          Fill
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -845,7 +861,7 @@ export default function Page() {
                           className="min-h-[80px] w-full"
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("diagnosis")}
                         >
                           Revert
@@ -865,7 +881,7 @@ export default function Page() {
                           className="min-h-[80px] w-full"
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("keywords")}
                         >
                           Revert
@@ -885,7 +901,7 @@ export default function Page() {
                           className="min-h-[120px] w-full"
                         />
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => handleReset("description")}
                         >
                           Revert

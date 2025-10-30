@@ -13,8 +13,8 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import idl from "../../../anchor.json";
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
 import { MAX_DID_LEN } from "@/lib/constants";
-import { bytesToHex } from "@/lib/bytes";
-import { blake2b256 } from "@/lib/hash";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const ID_NAMESPACE = "carechain:id";
 
@@ -66,16 +66,9 @@ function RegistrationForm({
   seqPda: PublicKey;
   onRegistered: () => void;
 }) {
-  const [idSource, setIdSource] = useState("");
-  const [idHashHex, setIdHashHex] = useState("");
   const [did, setDid] = useState("");
   const [err, setErr] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // --- Helper: normalizeId (from PatientsPage) ---
-  function normalizeId(raw: string) {
-    return raw.trim().replace(/\s+/g, "").toUpperCase();
-  }
 
   // --- Helper: useWalletDid (from PatientsPage) ---
   function useWalletDid() {
@@ -93,48 +86,12 @@ function RegistrationForm({
     }
   }
 
-  // --- Helper: Generate random 12-char ID SOURCE ---
-  function generateRandomIdSource() {
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < 12; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setIdSource(result);
-  }
-
-  // --- Hash logic ---
-  function computeIdHash(source: string): Uint8Array {
-    const normalized = normalizeId(source);
-    if (!normalized) throw new Error("Provide a non-empty ID source");
-    const salt = (process.env.NEXT_PUBLIC_ID_SALT ?? "").trim();
-    const material = `${ID_NAMESPACE}:${program.programId.toBase58()}:${salt}:${normalized}`;
-    return new Uint8Array(blake2b256(material));
-  }
-
   // Auto-set DID from wallet public key
   useEffect(() => {
     if (wallet?.publicKey) {
       useWalletDid();
     }
   }, [wallet]);
-
-  // Auto-compute hash whenever idSource changes
-  useEffect(() => {
-    if (idSource.trim() && program) {
-      try {
-        const hashBytes = computeIdHash(idSource);
-        setIdHashHex(bytesToHex(hashBytes));
-        setErr("");
-      } catch (e: any) {
-        setErr(e?.message ?? String(e));
-        setIdHashHex("");
-      }
-    } else {
-      setIdHashHex("");
-    }
-  }, [idSource, program]);
 
   // --- Upsert logic ---
   const handleSubmit = async () => {
@@ -148,15 +105,10 @@ function RegistrationForm({
       if (!d) throw new Error("DID could not be derived from wallet");
       if (d.length > MAX_DID_LEN)
         throw new Error(`DID max ${MAX_DID_LEN} chars`);
-
-      if (!idSource.trim()) throw new Error("ID Source required");
-      if (!idHashHex.trim()) throw new Error("ID Hash could not be computed");
-
       // We already have the hash bytes, just need to parse them again
-      const idHash = computeIdHash(idSource);
 
       await program.methods
-        .upsertPatient([...idHash], d)
+        .upsertPatient(d)
         .accounts({
           patientSigner: wallet.publicKey,
           patient: patientPda,
@@ -186,57 +138,23 @@ function RegistrationForm({
         {/* DID Input (Auto-filled from wallet) */}
         <div className="text-left">
           <label className="text-sm font-medium">DID (from Wallet)</label>
-          <input
+          <Input
             type="text"
             placeholder="Your Decentralized ID (DID)"
             value={did}
             readOnly
             disabled
-            className="w-full rounded border bg-gray-100 px-3 py-2 text-sm text-gray-700"
           />
         </div>
 
-        {/* ID Source Input (with Generate button) */}
-        <div className="text-left">
-          <label className="text-sm font-medium">ID Source</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Enter or generate a unique ID"
-              value={idSource}
-              onChange={(e) => setIdSource(e.target.value)}
-              className="w-full rounded border px-3 py-2 text-sm text-black"
-              disabled={isSubmitting}
-            />
-            <button
-              type="button"
-              onClick={generateRandomIdSource}
-              className="rounded border px-3 py-1 text-xs whitespace-nowrap"
-              disabled={isSubmitting}
-            >
-              Generate
-            </button>
-          </div>
-        </div>
-
-        {/* Computed ID Hash Display */}
-        {idHashHex && (
-          <div className="text-left space-y-1">
-            <label className="text-sm font-medium">Computed 32-Byte Hash</label>
-            <p className="font-mono text-xs break-all text-gray-600 rounded border p-2">
-              {idHashHex}
-            </p>
-          </div>
-        )}
-
         {/* Submit Button */}
-        <button
+        <Button
           onClick={handleSubmit}
-          disabled={isSubmitting || !idSource || !did || !idHashHex}
-          className="w-full rounded bg-black text-white px-4 py-2 disabled:opacity-50"
+          disabled={isSubmitting || !did}
+          variant={"outline"}
         >
           {isSubmitting ? "Registering..." : "Register Profile"}
-        </button>
+        </Button>
       </div>
 
       {/* Error Display */}

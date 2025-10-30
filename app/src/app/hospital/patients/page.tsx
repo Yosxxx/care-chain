@@ -2,13 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import {
-  Search,
-  SlidersHorizontal,
-  ChevronsUpDown,
-  ExternalLink,
-  QrCodeIcon,
-} from "lucide-react";
+import { Search, ChevronsUpDown, ExternalLink, QrCodeIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,8 +28,9 @@ import sodium from "libsodium-wrappers";
 import { findPatientPda, findPatientSeqPda } from "@/lib/pda";
 import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
 import { X } from "lucide-react";
+import { toast } from "sonner";
+import { FilterButton } from "@/components/filter-button";
 
-const SEED_CONFIG = Buffer.from("config");
 const SEED_RECORD = Buffer.from("record");
 const SEED_HOSPITAL = Buffer.from("hospital");
 const SEED_GRANT = Buffer.from("grant");
@@ -115,6 +110,8 @@ export default function Page() {
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const [openViewer, setOpenViewer] = useState(false);
 
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
+
   // Pagination
   const [page, setPage] = useState(1);
   const perPage = 5;
@@ -152,8 +149,9 @@ export default function Page() {
     try {
       setRecords([]);
       setErr("");
-      setStatus("Loading...");
+      setStatus("⏳ Loading...");
       setLoading(true);
+      setHasGrant(null);
 
       const patientWalletPk = new PublicKey(patientInput.trim());
       const patientPda = findPatientPda(programId, patientWalletPk);
@@ -210,9 +208,18 @@ export default function Page() {
           txSignature: rec.txSignature ?? undefined,
         });
       }
+
       setRecords(out.reverse());
+
+      // ✅ Success handling
+      setStatus("✅ Records fetched successfully.");
+      toast.success("Records fetched successfully.");
     } catch (e: any) {
-      setErr(e.message || String(e));
+      // ❌ Error handling
+      const message = e.message || String(e);
+      setErr(message);
+      toast.error(message);
+      setStatus("");
     } finally {
       setLoading(false);
     }
@@ -272,7 +279,7 @@ export default function Page() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `record_${rec.seq}.dat`;
+      a.download = `record_${rec.seq}.zip`;
       a.click();
       setStatus("Downloaded.");
     } catch (e: any) {
@@ -290,7 +297,7 @@ export default function Page() {
       </header>
 
       {/* --- STATUS BANNERS --- */}
-      <div className="space-y-2 mb-4">
+      <div className="space-y-2 my-2">
         {err && <StatusBanner type="error">❌ {err}</StatusBanner>}
 
         {status && !err && status.toLowerCase().includes("loading") && (
@@ -314,22 +321,51 @@ export default function Page() {
         )}
       </div>
 
-      <div className=" mt-2 flex gap-x-3 mb-5">
+      <div className="mt-2 flex gap-x-3 mb-5">
         <Input
           placeholder="Enter patient wallet (base58)"
           value={patientInput}
           onChange={(e) => setPatientInput(e.target.value)}
         />
+
+        {/* Search button */}
         <Button
           onClick={fetchPatientRecords}
-          disabled={disabled || loading}
+          disabled={disabled || loading || !patientInput.trim()}
           variant="outline"
         >
           {loading ? "Loading..." : "Search"}
         </Button>
-        <Button variant="outline">
-          <SlidersHorizontal />
+
+        {/* Clear button */}
+        <Button
+          onClick={() => {
+            setPatientInput("");
+            setRecords([]);
+            setErr("");
+            setStatus("");
+            setHasGrant(null);
+            toast.info("Search input cleared.");
+          }}
+          variant="secondary"
+          disabled={loading && !!patientInput}
+        >
+          Clear
         </Button>
+
+        {/* Filter placeholder */}
+        <FilterButton
+          options={[
+            { label: "All", value: null },
+            { label: "Doctor Name", value: "doctor_name" },
+            { label: "Hospital Name", value: "hospital_name" },
+            { label: "Diagnosis", value: "diagnosis" },
+          ]}
+          selected={selectedFilter}
+          onChange={(v) => setSelectedFilter(v)}
+        />
+
+        {/* QR Scan button */}
         <Button variant="outline" onClick={() => setScanning(true)}>
           <QrCodeIcon />
         </Button>

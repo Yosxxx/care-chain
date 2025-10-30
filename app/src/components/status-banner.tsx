@@ -10,7 +10,7 @@ interface StatusBannerProps {
 
 export function StatusBanner({ type = "info", children }: StatusBannerProps) {
   const base =
-    "rounded-xs border p-2 text-sm font-medium flex items-center gap-2";
+    "rounded-xs border p-2 text-xs font-medium flex items-center gap-2";
 
   const variant = {
     error: "border-red-600/40 bg-red-600/10 text-red-600",

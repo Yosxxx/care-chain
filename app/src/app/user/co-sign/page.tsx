@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { QrCodeIcon, X } from "lucide-react";
 import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
+import { StatusBanner } from "@/components/status-banner";
 
 export default function Page() {
   const { connection } = useConnection();
@@ -50,8 +51,10 @@ export default function Page() {
       await connection.confirmTransaction(sig, "confirmed");
 
       setStatus(`✅ Submitted: ${sig}`);
+      toast.success("Transaction Sent");
     } catch (e: any) {
       setStatus(`❌ ${e?.message || String(e)}`);
+      toast.errpr("Transaction Failed");
     }
   };
 
@@ -74,11 +77,9 @@ export default function Page() {
   };
 
   return (
-    <main className="mt-10">
-      <div className="flex flex-col items-center">
-        <h1 className="text-xl font-semibold font-architekt my-10">
-          Patient: Co-sign Record
-        </h1>
+    <main className="mt-5">
+      <div className="flex flex-col">
+        <h1 className="text-xl font-bold mb-5">CO-SIGN RECORD</h1>
 
         {/* ─────────────── QR MODAL SCANNER ─────────────── */}
         {scanning && (
@@ -131,7 +132,7 @@ export default function Page() {
           onChange={(e) => setB64(e.target.value)}
         />
 
-        <div className="flex justify-between gap-x-5 mt-10 w-full">
+        <div className="flex justify-between gap-x-5 my-5 w-full">
           <Button
             className="flex-1"
             variant="outline"
@@ -151,9 +152,17 @@ export default function Page() {
         </div>
 
         {status && (
-          <p className="text-sm whitespace-pre-wrap mt-4 text-center">
+          <StatusBanner
+            type={
+              status.toLowerCase().includes("error")
+                ? "error"
+                : status.toLowerCase().includes("success")
+                ? "success"
+                : "info"
+            }
+          >
             {status}
-          </p>
+          </StatusBanner>
         )}
       </div>
     </main>

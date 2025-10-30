@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
@@ -40,6 +39,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { toast } from "sonner";
+import { StatusBanner } from "@/components/status-banner";
 
 // --- Type definitions (unchanged) ---
 type HospitalUi = {
@@ -398,7 +398,7 @@ export default function Page() {
         </div>
       </header>
 
-      <div className="flex items-center space-x-2 mt-2">
+      <div className="flex w-full items-center space-x-2 mt-2">
         <Input
           type="text"
           placeholder="grantee (hospital authority pubkey)"
@@ -619,10 +619,14 @@ export default function Page() {
             </div>
           </main>
           {/* Transaction Status */}
-          {sig && <div className="font-mono">Transaction: {sig}</div>}
-          {err && (
-            <div className="font-mono text-destructive">Error: {err}</div>
+          {sig && (
+            <StatusBanner type="success">
+              ✅ Transaction confirmed: {""}
+              {sig}
+            </StatusBanner>
           )}
+
+          {err && <StatusBanner type="error">❌ {err}</StatusBanner>}
         </section>
       )}
 

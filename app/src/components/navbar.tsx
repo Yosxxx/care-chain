@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"; // ✅ static import (fixes flicker)
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { QRCodeCanvas } from "qrcode.react";
 import { GeneralModal } from "@/components/general-modal";
 import { QrCode } from "lucide-react";
