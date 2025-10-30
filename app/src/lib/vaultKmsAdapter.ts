@@ -27,16 +27,19 @@ export class VaultKmsAdapter implements KmsAdapter {
     this.token = token;
   }
 
+  
+
   static async init(
     keyRef = process.env.VAULT_TRANSIT_KEY || "carechain-transit",
     addr   = process.env.VAULT_ADDR || "",
     token  = process.env.VAULT_TOKEN || ""
   ): Promise<KmsAdapter> {
     // --- Fallback when Vault is unavailable ---
-    if (!addr || !addr.startsWith("http")) {
-      console.warn("[VaultKmsAdapter] VAULT_ADDR missing — using DevKmsAdapter (mock mode)");
+    if (!addr || !/^https?:\/\//.test(addr)) {
+      console.warn("[VaultKmsAdapter] invalid VAULT_ADDR, using DevKmsAdapter");
       return new DevKmsAdapter();
     }
+
     if (!token) {
       console.warn("[VaultKmsAdapter] VAULT_TOKEN missing — using DevKmsAdapter (mock mode)");
       return new DevKmsAdapter();
