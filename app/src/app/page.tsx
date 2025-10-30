@@ -1,7 +1,10 @@
+"use client"
 import { Button } from "@/components/ui/button";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
+  const router = useRouter();
+
   return (
     <main className="flex min-h-screen justify-center items-center flex-col max-w-xl min-w-xl mx-auto">
       <h1 className="text-4xl font-architekt font-bold">
@@ -11,14 +14,14 @@ export default function Page() {
         <Button
           className="flex-1"
           variant={"outline"}
-          onClick={redirect("/user/overview")}
+          onClick={() => router.push("/user/overview")}
         >
           BECOME A USER
         </Button>
         <Button
           className="flex-1"
           variant={"outline"}
-          onClick={redirect("/auth/admin")}
+          onClick={() => router.push("/auth/admin")}
         >
           REGISTER YOUR HOSPITAL
         </Button>
