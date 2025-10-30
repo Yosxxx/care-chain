@@ -84,9 +84,6 @@ pub struct Hospital {
 pub struct Patient {
     pub patient_pubkey: Pubkey,
 
-    // hash dari unique identity
-    pub id_hash: [u8; 32],
-
     #[max_len(MAX_DID_LEN)]
     pub did: String,
 
@@ -152,7 +149,6 @@ pub struct Record {
     pub bump: u8,
 
     // --- START: NEW ON-CHAIN ATTRIBUTES ---
-    
     /// The patient's main wallet pubkey (denormalized from Patient account)
     pub patient_pubkey: Pubkey,
 
@@ -179,7 +175,6 @@ pub struct Record {
 
     #[max_len(MAX_DESCRIPTION_LEN)]
     pub description: String,
-    
     // --- END: NEW ON-CHAIN ATTRIBUTES ---
 }
 

@@ -28,8 +28,6 @@ export default function PatientsPage() {
   const wallet = useAnchorWallet();
 
   const [did, setDid] = useState("");
-  const [idSource, setIdSource] = useState("");
-  const [idHashHex, setIdHashHex] = useState("");
   const [sig, setSig] = useState("");
   const [err, setErr] = useState("");
 
@@ -42,8 +40,8 @@ export default function PatientsPage() {
     () =>
       wallet
         ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
+          commitment: "confirmed",
+        })
         : null,
     [connection, wallet]
   );
@@ -108,39 +106,11 @@ export default function PatientsPage() {
           "carechain_didkey_ed25519",
           JSON.stringify(payload)
         );
-      } catch {}
+      } catch { }
       setErr("");
     } catch (e: any) {
       setErr(e?.message ?? String(e));
     }
-  }
-
-  // ----- id_hash helpers -----
-  function normalizeId(raw: string) {
-    return raw.trim().replace(/\s+/g, "").toUpperCase();
-  }
-
-  function computeHash() {
-    try {
-      const normalized = normalizeId(idSource);
-      if (!normalized) throw new Error("Provide a non-empty ID source");
-      const salt = (process.env.NEXT_PUBLIC_ID_SALT ?? "").trim(); // optional pepper
-      const material = `${ID_NAMESPACE}:${programId.toBase58()}:${salt}:${normalized}`;
-      const digest = new Uint8Array(blake2b256(material));
-      setIdHashHex(bytesToHex(digest));
-      setErr("");
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  }
-
-  function parseHexOrThrow(hex: string) {
-    const clean = hex.trim().replace(/^0x/i, "");
-    if (!/^[0-9a-fA-F]{64}$/.test(clean))
-      throw new Error("id_hash hex must be 64 hex chars (32 bytes)");
-    const bytes = hexToBytes(clean);
-    if (bytes.length !== 32) throw new Error("id_hash must be 32 bytes");
-    return bytes;
   }
 
   // ----- submit -----
@@ -156,22 +126,10 @@ export default function PatientsPage() {
       if (d.length > MAX_DID_LEN)
         throw new Error(`DID max ${MAX_DID_LEN} chars`);
 
-      let idHash: Uint8Array;
-      if (idHashHex.trim()) {
-        idHash = parseHexOrThrow(idHashHex);
-      } else if (idSource.trim()) {
-        const normalized = normalizeId(idSource);
-        const salt = (process.env.NEXT_PUBLIC_ID_SALT ?? "").trim();
-        const material = `${ID_NAMESPACE}:${programId.toBase58()}:${salt}:${normalized}`;
-        idHash = new Uint8Array(blake2b256(material));
-      } else {
-        throw new Error("Provide id_source (to hash) or paste id_hash hex");
-      }
-
       const tx = await program.methods
-        .upsertPatient([...idHash], d)
+        .upsertPatient(d)
         .accounts({
-          patientSigner: wallet.publicKey,
+          authority: wallet.publicKey,
           patient: patientPda!,
           patientSeq: seqPda!,
           systemProgram: SystemProgram.programId,
@@ -180,8 +138,6 @@ export default function PatientsPage() {
 
       setSig(tx);
       setDid("");
-      setIdSource("");
-      setIdHashHex("");
       refresh();
     } catch (e: any) {
       try {
@@ -190,7 +146,7 @@ export default function PatientsPage() {
           setErr(`${e.message}\n${logs.join("\n")}`);
           return;
         }
-      } catch {}
+      } catch { }
       setErr(e?.message ?? String(e));
     }
   };
@@ -198,8 +154,7 @@ export default function PatientsPage() {
   const canSubmit =
     !!program &&
     !!patientPk &&
-    !!did.trim() &&
-    (!!idHashHex.trim() || !!idSource.trim());
+    !!did.trim();
 
   return (
     <main className="mx-auto max-w-2xl p-6 space-y-6">
@@ -245,41 +200,6 @@ export default function PatientsPage() {
           </p>
         </div>
 
-        {/* id_hash */}
-        <div className="grid gap-2 rounded border p-3">
-          <div className="text-sm font-medium">id_hash</div>
-          <input
-            className="rounded border px-3 py-2 text-sm"
-            placeholder="id source (e.g., MRN/NIK) — will be namespaced & blake2b-256 hashed"
-            value={idSource}
-            onChange={(e) => setIdSource(e.target.value)}
-          />
-          <div className="flex items-center gap-2">
-            <button
-              onClick={computeHash}
-              className="rounded border px-3 py-1 w-fit text-xs"
-            >
-              Hash to 32-byte
-            </button>
-            {idHashHex && (
-              <span className="text-xs opacity-70">
-                {idHashHex.slice(0, 10)}…{idHashHex.slice(-10)} (
-                {idHashHex.replace(/^0x/i, "").length / 2} bytes)
-              </span>
-            )}
-          </div>
-          <input
-            className="rounded border px-3 py-2 font-mono text-xs"
-            placeholder="or paste id_hash hex (0x… 64 hex chars)"
-            value={idHashHex}
-            onChange={(e) => setIdHashHex(e.target.value)}
-          />
-          <p className="text-xs opacity-70">
-            Privacy: raw ID never leaves your browser; only the 32-byte digest
-            is sent.
-          </p>
-        </div>
-
         <button
           onClick={upsert}
           disabled={!canSubmit}
@@ -308,10 +228,6 @@ export default function PatientsPage() {
               <div>
                 <b>Patient PDA:</b>{" "}
                 <span className="font-mono">{p.pubkey}</span>
-              </div>
-              <div>
-                <b>id_hash:</b>{" "}
-                <span className="font-mono break-all">{p.idHashHex}</span>
               </div>
               <div>
                 <b>DID:</b> {p.did}

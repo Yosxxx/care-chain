@@ -86,12 +86,8 @@ pub mod anchor {
         records_read(ctx, seq)
     }
 
-    pub fn upsert_patient(
-        ctx: Context<UpsertPatient>,
-        id_hash: [u8; 32],
-        did: String,
-    ) -> Result<()> {
-        patient_upsert(ctx, id_hash, did)
+    pub fn upsert_patient(ctx: Context<UpsertPatient>, did: String) -> Result<()> {
+        patient_upsert(ctx, did)
     }
 
     pub fn grant_access(

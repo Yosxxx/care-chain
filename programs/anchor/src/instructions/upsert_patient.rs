@@ -5,7 +5,7 @@ use crate::event::PatientUpserted;
 use crate::states::*;
 use anchor_lang::prelude::*;
 
-pub fn patient_upsert(ctx: Context<UpsertPatient>, id_hash: [u8; 32], did: String) -> Result<()> {
+pub fn patient_upsert(ctx: Context<UpsertPatient>, did: String) -> Result<()> {
     require!(did.len() <= MAX_DID_LEN, PatientError::DidTooLong);
 
     let now = Clock::get()?.unix_timestamp;
@@ -15,7 +15,6 @@ pub fn patient_upsert(ctx: Context<UpsertPatient>, id_hash: [u8; 32], did: Strin
 
     if new_p {
         p.patient_pubkey = ctx.accounts.authority.key();
-        p.id_hash = id_hash;
         p.did = did;
         p.created_at = now;
         p.bump = ctx.bumps.patient;
@@ -30,7 +29,6 @@ pub fn patient_upsert(ctx: Context<UpsertPatient>, id_hash: [u8; 32], did: Strin
             ctx.accounts.authority.key(),
             PatientError::Unauthorized
         );
-        p.id_hash = id_hash;
         p.did = did;
     }
 
