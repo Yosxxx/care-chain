@@ -179,7 +179,7 @@ export default function OverviewPage() {
   }, [filteredGrants]);
 
   return (
-    <main className="space-y-8 my-8">
+    <main className="space-y-8 my-6">
       {/* === HEADER === */}
       <header>
         <h1 className="text-2xl font-bold">Overview</h1>

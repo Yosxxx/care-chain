@@ -98,13 +98,13 @@
 }
 
 .dark {
-  --background: #121212;
+  --background: oklch(0.1822 0 0);
   --foreground: oklch(0.9288 0.0126 255.5078);
-  --card: #171717;
+  --card: oklch(0.2046 0 0);
   --card-foreground: oklch(0.9288 0.0126 255.5078);
   --popover: oklch(0.2603 0 0);
   --popover-foreground: oklch(0.7348 0 0);
-  --primary: #006239;
+  --primary: oklch(0.4365 0.1044 156.7556);
   --primary-foreground: oklch(0.9213 0.0135 167.1556);
   --secondary: oklch(0.2603 0 0);
   --secondary-foreground: oklch(0.9851 0 0);
@@ -286,14 +286,45 @@
   @apply bg-transparent;
 }
 
-.wallet-adapter-modal-list {
-  @apply flex flex-col;
-}
 /* Modal polish */
 .wallet-adapter-modal-wrapper {
-  @apply rounded-xs bg-background text-foreground;
+  @apply rounded-lg bg-background text-foreground;
 }
 
 .wallet-adapter-modal-button-close {
   @apply rounded-xs hover:bg-accent;
+}
+
+/* === SCROLLBAR (Overlay, No Layout Shift) === */
+html {
+  scrollbar-gutter: stable both-edges; /* prevents layout jump when scrollbars appear */
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  position: fixed;
+  z-index: 9999; /* keep above content */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* overlay look */
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--color-foreground) 25%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--color-foreground) 40%, transparent);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--color-foreground) 25%, transparent)
+    transparent;
 }
