@@ -1,12 +1,6 @@
 "use client";
 
 import * as React from "react";
-import * as anchor from "@coral-xyz/anchor";
-import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
-import idl from "../../../../anchor.json";
-import { findHospitalPda } from "@/lib/pda";
-
 import {
   Card,
   CardContent,
@@ -21,7 +15,7 @@ import {
   ChartLegend,
   ChartLegendContent,
 } from "@/components/ui/chart";
-import { AreaChart, Area, CartesianGrid, XAxis } from "recharts";
+import { AreaChart, Area, CartesianGrid, XAxis, BarChart, Bar } from "recharts";
 import {
   Select,
   SelectContent,
@@ -30,79 +24,102 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export default function Page() {
-  const { connection } = useConnection();
-  const wallet = useAnchorWallet();
+// ================= MOCK DATA GENERATION =================
+function generateMockData() {
+  const now = Math.floor(Date.now() / 1000);
+  const records = [];
+  const grants = [];
+  const patientIds = ["p1", "p2", "p3", "p4"];
 
+  // --- RECORDS with polynomial-like daily pattern ---
+  const start = now - 90 * 24 * 3600;
+  for (let day = 0; day < 90; day++) {
+    const ts = start + day * 24 * 3600;
+
+    // cubic + sine + cosine = smooth realistic peaks
+    const t = day / 90;
+    const poly =
+      60 * Math.pow(t - 0.5, 2) * (1 - t) +
+      15 * Math.sin(day / 8) +
+      8 * Math.cos(day / 5);
+    const uploadsToday = Math.max(0, Math.round(15 + poly + Math.random() * 5));
+
+    for (let i = 0; i < uploadsToday; i++) {
+      records.push({
+        createdAt: ts + Math.random() * 86400,
+        patient: patientIds[Math.floor(Math.random() * patientIds.length)],
+      });
+    }
+  }
+
+  // --- GRANTS with heavy polynomial & random reversals ---
+  const gstart = now - 60 * 24 * 3600;
+  for (let day = 0; day < 60; day++) {
+    const ts = gstart + day * 24 * 3600;
+
+    // strong polynomial wave variation
+    const t = day / 60;
+    const curve =
+      160 * Math.pow(t - 0.5, 3) -
+      100 * Math.pow(t - 0.3, 2) +
+      25 * Math.sin(day / 4) +
+      15 * Math.cos(day / 9);
+    const writeCount = Math.max(
+      0,
+      Math.round(20 + curve / 10 + Math.sin(day / 3) * 4)
+    );
+    const readCount = Math.max(
+      0,
+      Math.round(12 + curve / 15 + Math.cos(day / 4) * 3)
+    );
+
+    // Add grants
+    for (let i = 0; i < writeCount; i++) {
+      grants.push({
+        createdAt: ts,
+        revoked: false,
+        scope: 2,
+        patient: patientIds[Math.floor(Math.random() * patientIds.length)],
+      });
+    }
+    for (let i = 0; i < readCount; i++) {
+      grants.push({
+        createdAt: ts,
+        revoked: false,
+        scope: 1,
+        patient: patientIds[Math.floor(Math.random() * patientIds.length)],
+      });
+    }
+
+    // Random revoke events
+    const revokeEvents = Math.round(
+      Math.max(0, Math.sin(day / 5) * 3 + Math.random() * 3)
+    );
+    for (let i = 0; i < revokeEvents; i++) {
+      grants.push({
+        createdAt: ts,
+        revoked: true,
+        scope: Math.random() > 0.5 ? 2 : 1,
+        patient: patientIds[Math.floor(Math.random() * patientIds.length)],
+      });
+    }
+  }
+
+  return { records, grants };
+}
+
+// ================= MAIN PAGE =================
+export default function Page() {
   const [records, setRecords] = React.useState<any[]>([]);
   const [grants, setGrants] = React.useState<any[]>([]);
-  const [timeRange, setTimeRange] = React.useState("30d");
-  const [loading, setLoading] = React.useState(false);
+  const [recordTimeRange, setRecordTimeRange] = React.useState("30d");
+  const [grantTimeRange, setGrantTimeRange] = React.useState("30d");
 
-  const programId = React.useMemo(
-    () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
-    []
-  );
-
-  const provider = React.useMemo(
-    () =>
-      wallet
-        ? new anchor.AnchorProvider(connection, wallet, {
-            commitment: "confirmed",
-          })
-        : null,
-    [connection, wallet]
-  );
-
-  const program = React.useMemo(
-    () => (provider ? new anchor.Program(idl as anchor.Idl, provider) : null),
-    [provider]
-  );
-
-  // ─── PDAs ────────────────────────────────
-  const hospitalPda = React.useMemo(
-    () =>
-      wallet?.publicKey ? findHospitalPda(programId, wallet.publicKey) : null,
-    [programId, wallet?.publicKey]
-  );
-
-  // ─── FETCH DATA ──────────────────────────
   React.useEffect(() => {
-    (async () => {
-      if (!program || !hospitalPda) return;
-      setLoading(true);
-
-      try {
-        // === RECORDS ===
-        const allRecords = await program.account.record.all([
-          { memcmp: { offset: 8 + 32, bytes: hospitalPda.toBase58() } },
-        ]);
-
-        const parsedRecords = allRecords.map((r: any) => ({
-          createdAt: Number(r.account.created_at),
-          patient: r.account.patient.toBase58(),
-        }));
-        setRecords(parsedRecords.sort((a, b) => b.createdAt - a.createdAt));
-
-        // === GRANTS ===
-        const allGrants = await program.account.grant.all([
-          { memcmp: { offset: 8 + 32, bytes: wallet.publicKey.toBase58() } },
-        ]);
-
-        const parsedGrants = allGrants.map((r: any) => ({
-          createdAt: Number(r.account.created_at),
-          revoked: !!r.account.revoked,
-          scope: Number(r.account.scope),
-          patient: r.account.patient.toBase58(),
-        }));
-        setGrants(parsedGrants.sort((a, b) => b.createdAt - a.createdAt));
-      } catch (e) {
-        console.error("Failed to fetch hospital data:", e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [program, hospitalPda, wallet]);
+    const { records, grants } = generateMockData();
+    setRecords(records);
+    setGrants(grants);
+  }, []);
 
   // ─── METRICS ─────────────────────────────
   const totalRecords = records.length;
@@ -112,68 +129,114 @@ export default function Page() {
   ).length;
   const totalGrants = grants.length;
 
-  // ─── RANGE FILTER (WITH FIX) ──────────────────
-  const days =
-    timeRange === "7d"
+  // ─── RANGE FILTERS ───────────────────────
+  const rangeToDays = (r: string) =>
+    r === "7d"
       ? 7
-      : timeRange === "30d"
+      : r === "30d"
       ? 30
-      : timeRange === "90d"
+      : r === "90d"
       ? 90
-      : timeRange === "365d" // <-- Added this
+      : r === "365d"
       ? 365
-      : 99999; // <-- Default for "All time"
+      : 99999;
 
-  // Set cutoff to 0 if "all" is selected, otherwise calculate based on days
-  const cutoff = timeRange === "all" ? 0 : Date.now() / 1000 - days * 24 * 3600;
+  const now = Date.now() / 1000;
+  const recordCutoff =
+    recordTimeRange === "all" ? 0 : now - rangeToDays(recordTimeRange) * 86400;
+  const grantCutoff =
+    grantTimeRange === "all" ? 0 : now - rangeToDays(grantTimeRange) * 86400;
 
-  const filteredRecords = records.filter((r) => r.createdAt >= cutoff);
-  const filteredGrants = grants.filter((g) => g.createdAt >= cutoff);
+  const filteredRecords = records.filter((r) => r.createdAt >= recordCutoff);
+  const filteredGrants = grants.filter((g) => g.createdAt >= grantCutoff);
 
-  // ─── CHART: Record Upload Trend ───────────
+  // ─── RECORD BAR CHART DATA ───────────────
   const recordChartData = React.useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of filteredRecords) {
-      const ts = r.createdAt > 1e12 ? r.createdAt / 1000 : r.createdAt; // auto-detect
-      const date = new Date(ts * 1000).toLocaleDateString("en-US", {
+      const date = new Date(r.createdAt * 1000).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
       });
       map[date] = (map[date] || 0) + 1;
     }
-    return Object.entries(map).map(([date, count]) => ({ date, count }));
+
+    const sorted = Object.entries(map).sort(
+      (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()
+    );
+    return sorted.map(([date, count]) => ({ date, count }));
   }, [filteredRecords]);
 
-  // ─── CHART: Grant Activity ───────────────
+  // ─── GRANT AREA CHART DATA ───────────────
   const grantChartData = React.useMemo(() => {
-    const map: Record<string, { writeActive: number; writeRevoked: number }> =
-      {};
+    const map: Record<
+      string,
+      {
+        writeAdd: number;
+        writeRevoke: number;
+        readAdd: number;
+        readRevoke: number;
+      }
+    > = {};
 
     for (const g of filteredGrants) {
       const date = new Date(g.createdAt * 1000).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
       });
-      if (!map[date]) map[date] = { writeActive: 0, writeRevoked: 0 };
+      if (!map[date])
+        map[date] = { writeAdd: 0, writeRevoke: 0, readAdd: 0, readRevoke: 0 };
+
       if (g.scope === 2) {
-        g.revoked ? map[date].writeRevoked++ : map[date].writeActive++;
+        if (g.revoked) map[date].writeRevoke++;
+        else map[date].writeAdd++;
+      } else if (g.scope === 1) {
+        if (g.revoked) map[date].readRevoke++;
+        else map[date].readAdd++;
       }
     }
-    return Object.entries(map).map(([date, data]) => ({ date, ...data }));
+
+    const sortedDates = Object.keys(map).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+
+    const totals: {
+      date: string;
+      writeTotal: number;
+      readTotal: number;
+      totalActive: number;
+    }[] = [];
+
+    let write = 0;
+    let read = 0;
+
+    for (const d of sortedDates) {
+      const ev = map[d];
+      write += ev.writeAdd - ev.writeRevoke;
+      read += ev.readAdd - ev.readRevoke;
+
+      // smoother variation (simulate polynomial drift)
+      const modifier = Math.sin(new Date(d).getDate() / 3) * 2;
+      totals.push({
+        date: d,
+        writeTotal: Math.max(0, Math.round(write + modifier)),
+        readTotal: Math.max(0, Math.round(read - modifier / 2)),
+        totalActive: Math.max(0, Math.round(write + read)),
+      });
+    }
+    return totals;
   }, [filteredGrants]);
 
   // ─── UI ──────────────────────────────────
   return (
     <main className="space-y-8 my-8">
-      {/* === HEADER === */}
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Hospital Overview</h1>
         <p className="text-sm text-muted-foreground">
-          Real-time summary of on-chain activity for this hospital
+          Realistic polynomial mock analytics (Bar + Area combined)
         </p>
       </header>
 
-      {/* === METRICS GRID === */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Total Records Uploaded" value={totalRecords} />
         <MetricCard title="Unique Patients Served" value={uniquePatients} />
@@ -181,51 +244,45 @@ export default function Page() {
         <MetricCard title="Total Grants" value={totalGrants} />
       </section>
 
-      {/* === CHARTS === */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* --- Record Upload BarChart --- */}
         <ChartCard
-          title="Record Upload Trend"
-          desc="Records created and uploaded by this hospital"
-          timeRange={timeRange}
-          setTimeRange={setTimeRange}
+          title="Record Uploads per Day"
+          desc="Daily uploaded records (polynomial variation)"
+          timeRange={recordTimeRange}
+          setTimeRange={setRecordTimeRange}
           data={recordChartData}
-          dataKey="count"
-          label="Records"
-          gradientId="fillRecords"
+          chartType="bar"
           strokeColor="var(--chart-1)"
         />
+
+        {/* --- Grant AreaChart --- */}
         <ChartCard
-          title="Write Grant Trend"
-          desc="Grants from patients authorizing write access"
-          timeRange={timeRange} // <-- Pass props to the second chart too
-          setTimeRange={setTimeRange} // <-- Pass props to the second chart too
+          title="Grant Activity Overview"
+          desc="Active read/write grants over time"
+          timeRange={grantTimeRange}
+          setTimeRange={setGrantTimeRange}
           data={grantChartData}
-          label="Grants"
           multiSeries={[
             {
-              key: "writeActive",
-              label: "Active Write",
+              key: "writeTotal",
+              label: "Write Grants",
               color: "var(--chart-2)",
             },
+            { key: "readTotal", label: "Read Grants", color: "var(--chart-3)" },
             {
-              key: "writeRevoked",
-              label: "Revoked Write",
-              color: "var(--chart-4)",
+              key: "totalActive",
+              label: "Total Active",
+              color: "var(--chart-1)",
             },
           ]}
         />
       </section>
-
-      {loading && (
-        <p className="text-sm text-muted-foreground italic">
-          Fetching on-chain data...
-        </p>
-      )}
     </main>
   );
 }
 
-// ─── REUSABLE METRIC CARD ──────────────────────────────
+// ─── METRIC CARD ───────────────────────────
 function MetricCard({
   title,
   value,
@@ -243,36 +300,36 @@ function MetricCard({
   );
 }
 
-// ─── REUSABLE CHART CARD (WITH FIX) ──────────────────
+// ─── CHART CARD ────────────────────────────
 function ChartCard({
   title,
   desc,
   data,
   dataKey,
-  label,
   gradientId,
   strokeColor,
   multiSeries,
   timeRange,
   setTimeRange,
+  chartType = "area",
 }: {
   title: string;
   desc: string;
   data: any[];
   dataKey?: string;
-  label?: string;
   gradientId?: string;
   strokeColor?: string;
   multiSeries?: { key: string; label: string; color: string }[];
   timeRange?: string;
   setTimeRange?: (v: string) => void;
+  chartType?: "area" | "bar";
 }) {
   const chartConfig = multiSeries
     ? multiSeries.reduce((acc, s) => {
         acc[s.key] = { label: s.label, color: s.color };
         return acc;
       }, {} as any)
-    : { [dataKey ?? "value"]: { label, color: strokeColor } };
+    : { [dataKey ?? "value"]: { label: title, color: strokeColor } };
 
   return (
     <Card>
@@ -281,7 +338,7 @@ function ChartCard({
           <CardTitle>{title}</CardTitle>
           <CardDescription>{desc}</CardDescription>
         </div>
-        {setTimeRange && timeRange && (
+        {setTimeRange && (
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-[130px] text-xs">
               <SelectValue placeholder="Range" />
@@ -290,9 +347,8 @@ function ChartCard({
               <SelectItem value="7d">Last 7 days</SelectItem>
               <SelectItem value="30d">Last 30 days</SelectItem>
               <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="365d">Last 365 days</SelectItem>{" "}
-              {/* <-- ADDED */}
-              <SelectItem value="all">All time</SelectItem> {/* <-- ADDED */}
+              <SelectItem value="365d">Last 365 days</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -303,6 +359,33 @@ function ChartCard({
           <div className="flex items-center justify-center h-[250px] text-sm text-muted-foreground">
             No data for selected range
           </div>
+        ) : chartType === "bar" ? (
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-[250px] w-full"
+          >
+            <BarChart
+              data={data}
+              margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+              <XAxis
+                dataKey="date"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 11 }}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(l) => `📅 ${l}`}
+                    formatter={(v, n) => [`${v}`, chartConfig[n]?.label || n]}
+                  />
+                }
+              />
+              <Bar dataKey="count" fill={strokeColor} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
         ) : (
           <ChartContainer
             config={chartConfig}
@@ -313,40 +396,20 @@ function ChartCard({
               margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
             >
               <defs>
-                {multiSeries ? (
-                  multiSeries.map((s) => (
-                    <linearGradient
-                      key={s.key}
-                      id={`fill-${s.key}`}
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor={s.color} stopOpacity={0.8} />
-                      <stop
-                        offset="95%"
-                        stopColor={s.color}
-                        stopOpacity={0.05}
-                      />
-                    </linearGradient>
-                  ))
-                ) : (
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor={strokeColor}
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={strokeColor}
-                      stopOpacity={0.05}
-                    />
+                {multiSeries?.map((s) => (
+                  <linearGradient
+                    key={s.key}
+                    id={`fill-${s.key}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="5%" stopColor={s.color} stopOpacity={0.8} />
+                    <stop offset="95%" stopColor={s.color} stopOpacity={0.05} />
                   </linearGradient>
-                )}
+                ))}
               </defs>
-
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis
                 dataKey="date"
@@ -358,39 +421,23 @@ function ChartCard({
                 content={
                   <ChartTooltipContent
                     indicator="dot"
-                    labelFormatter={(label) => `📅 ${label}`}
-                    formatter={(value, name) => [
-                      `${value}`,
-                      chartConfig[name]?.label || name,
-                    ]}
+                    labelFormatter={(l) => `📅 ${l}`}
+                    formatter={(v, n) => [`${v}`, chartConfig[n]?.label || n]}
                   />
                 }
               />
-
-              {multiSeries ? (
-                multiSeries.map((s) => (
-                  <Area
-                    key={s.key}
-                    dataKey={s.key}
-                    type="monotone"
-                    fill={`url(#fill-${s.key})`}
-                    stroke={s.color}
-                    strokeWidth={2}
-                    activeDot={{ r: 4 }}
-                  />
-                ))
-              ) : (
+              {multiSeries?.map((s) => (
                 <Area
-                  dataKey={dataKey ?? "value"}
+                  key={s.key}
+                  dataKey={s.key}
                   type="monotone"
-                  fill={`url(#${gradientId})`}
-                  stroke={strokeColor}
+                  fill={`url(#fill-${s.key})`}
+                  stroke={s.color}
                   strokeWidth={2}
                   activeDot={{ r: 4 }}
                 />
-              )}
-
-              {multiSeries && <ChartLegend content={<ChartLegendContent />} />}
+              ))}
+              <ChartLegend content={<ChartLegendContent />} />
             </AreaChart>
           </ChartContainer>
         )}
