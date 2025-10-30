@@ -637,7 +637,7 @@ export default function Page() {
             />
           </div>
 
-          {/* --- MODIFIED: Added Refresh Button & Share Link --- */}
+          {/* --- MODIFIED: Added Refresh Button k --- */}
           <div className="flex flex-col items-center gap-3">
             <p className="text-xs text-muted-foreground break-all max-w-[90%] text-center">
               {coSignBase64.slice(0, 64)}...

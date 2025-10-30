@@ -282,7 +282,7 @@ export default function Page() {
 
   // ================== UI ==================
   return (
-    <main className=" my-6">
+    <main className=" my-5">
       <header className="font-architekt p-2 border rounded-xs mt-5">
         <div className="flex font-bold gap-x-2 items-center">
           <Search size={20} /> Search for Records

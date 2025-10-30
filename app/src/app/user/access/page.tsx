@@ -421,7 +421,7 @@ export default function Page() {
 
   // --- JSX (No Cards) ---
   return (
-    <main className="mx-auto my-6">
+    <main className="mx-auto my-5">
       <header className="font-architekt p-2 border rounded-xs">
         <div className="flex font-bold gap-x-2 items-center">
           <Search size={20} /> Search for Hospitals

@@ -4,10 +4,11 @@
 import AppSidebar from "@/components/app-sidebar";
 import {
   Building2,
-  ClipboardList,
-  FilePen,
   FileText,
-  Users,
+  ShieldCheck,
+  Handshake,
+  KeySquare,
+  FileSignature,
 } from "lucide-react";
 import Navbar from "@/components/navbar";
 import dynamic from "next/dynamic";
@@ -22,8 +23,6 @@ import { MAX_DID_LEN } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const ID_NAMESPACE = "carechain:id";
-
 const SIDEBAR_ITEMS = [
   {
     label: "Overview",
@@ -37,18 +36,23 @@ const SIDEBAR_ITEMS = [
   },
   {
     label: "Trustees",
-    href: "#",
-    icon: <Users className="w-5 h-5" />,
+    href: "/user/trustees",
+    icon: <ShieldCheck className="w-5 h-5" />, // symbolizes verified / trusted entities
+  },
+  {
+    label: "Trustee Grant",
+    href: "/user/trustee-grant",
+    icon: <Handshake className="w-5 h-5" />, // represents delegation / partnership
   },
   {
     label: "Access",
     href: "/user/access",
-    icon: <ClipboardList className="w-5 h-5" />,
+    icon: <KeySquare className="w-5 h-5" />, // signifies access control / permissions
   },
   {
     label: "Co-Sign",
     href: "/user/co-sign",
-    icon: <FilePen className="w-5 h-5" />,
+    icon: <FileSignature className="w-5 h-5" />, // better than FilePen for signing
   },
 ];
 

@@ -167,7 +167,7 @@ export default function UserOverviewPage() {
   }, [filteredGrants]);
 
   return (
-    <main className="space-y-8 my-6">
+    <main className="space-y-8 my-5">
       {/* === HEADER === */}
       <header>
         <h1 className="text-2xl font-bold">Your CareChain Activity</h1>

@@ -3,30 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
-import {
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  TransactionInstruction,
-} from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import idl from "../../../../anchor.json";
-import dynamic from "next/dynamic";
 import { findPatientPda, findTrusteePda } from "@/lib/pda";
-
-const WalletMultiButton = dynamic(
-  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
-  { ssr: false }
-);
-
-type TrusteeUi = {
-  pubkey: string;
-  patient: string;
-  trustee: string;
-  addedBy: string;
-  createdAt: number;
-  revoked: boolean;
-  revokedAt?: number | null;
-};
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { GeneralModal } from "@/components/general-modal";
+import { QrCode, Search } from "lucide-react";
+import { toast } from "sonner";
+import { StatusBanner } from "@/components/status-banner";
+import { QRCodeCanvas } from "qrcode.react";
+import { Scanner, useDevices } from "@yudiel/react-qr-scanner";
 
 export default function TrusteesPage() {
   const { connection } = useConnection();
@@ -34,14 +21,16 @@ export default function TrusteesPage() {
 
   const [trusteeStr, setTrusteeStr] = useState("");
   const [trusteeValid, setTrusteeValid] = useState<boolean | null>(null);
-  const [trustees, setTrustees] = useState<TrusteeUi[]>([]);
   const [patientExists, setPatientExists] = useState<boolean | null>(null);
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
-  const [sig, setSig] = useState("");
   const [pendingB64, setPendingB64] = useState("");
-  const [shareUrl, setShareUrl] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // QR Scanner modal
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const devices = useDevices();
 
   const programId = useMemo(
     () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID!),
@@ -51,7 +40,9 @@ export default function TrusteesPage() {
   const provider = useMemo(
     () =>
       wallet
-        ? new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" })
+        ? new anchor.AnchorProvider(connection, wallet, {
+            commitment: "confirmed",
+          })
         : null,
     [connection, wallet]
   );
@@ -70,14 +61,15 @@ export default function TrusteesPage() {
   const ensureReady = () => {
     if (!program || !wallet) throw new Error("Program/wallet not ready");
     if (!patientPk) throw new Error("Connect wallet first");
-    if (!patientExists) throw new Error("You have not registered as a patient yet");
+    if (!patientExists)
+      throw new Error("You have not registered as a patient yet");
   };
 
   async function checkTrusteeRegistered(pk: PublicKey) {
     if (!program) return;
     try {
       const tPda = findPatientPda(program.programId, pk);
-      // @ts-expect-error anchor typing
+      // @ts-expect-error
       const acc = await program.account.patient.fetchNullable(tPda);
       setTrusteeValid(!!acc);
     } catch {
@@ -85,7 +77,7 @@ export default function TrusteesPage() {
     }
   }
 
-  // === load patient registration ===
+  // === Load patient registration ===
   useEffect(() => {
     (async () => {
       if (!program || !patientPda) return;
@@ -99,38 +91,7 @@ export default function TrusteesPage() {
     })();
   }, [program, patientPda]);
 
-  // === load trustees list ===
-  const loadTrustees = async () => {
-    if (!program || !patientPk) return;
-    setLoading(true);
-    try {
-      const filters: anchor.web3.GetProgramAccountsFilter[] = [
-        { memcmp: { offset: 8, bytes: patientPk.toBase58() } },
-      ];
-      const raw = await program.account.trustee.all(filters as any);
-      const rows: TrusteeUi[] = raw.map((r: any) => ({
-        pubkey: r.publicKey.toBase58(),
-        patient: r.account.patient.toBase58(),
-        trustee: r.account.trustee.toBase58(),
-        addedBy: r.account.addedBy.toBase58?.() ?? r.account.addedBy,
-        createdAt: Number(r.account.createdAt),
-        revoked: !!r.account.revoked,
-        revokedAt: r.account.revokedAt ? Number(r.account.revokedAt) : null,
-      }));
-      rows.sort((a, b) => b.createdAt - a.createdAt);
-      setTrustees(rows);
-    } catch (e: any) {
-      setErr(e.message ?? String(e));
-      setTrustees([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadTrustees();
-  }, [program, patientPk?.toBase58()]);
-
+  // === Trustee address validation ===
   useEffect(() => {
     (async () => {
       setTrusteeValid(null);
@@ -145,162 +106,209 @@ export default function TrusteesPage() {
     })();
   }, [trusteeStr, program]);
 
-  // === prepare multi-sig tx (Add Trustee) ===
+  // === Prepare multi-sig tx (Add Trustee) ===
   const prepareAddTrustee = async () => {
     try {
-      setErr(""); setStatus(""); setSig("");
-      setPendingB64(""); setShareUrl("");
-
+      setErr("");
+      setStatus("");
+      setPendingB64("");
       ensureReady();
 
       const trusteePk = new PublicKey(trusteeStr.trim());
-      if (!trusteeValid) throw new Error("This trustee wallet is not registered as a user.");
+      if (!trusteeValid)
+        throw new Error("This trustee wallet is not registered as a user.");
 
       const trusteePda = findTrusteePda(programId, patientPk!, trusteePk);
-
       setStatus("Building instruction...");
-      const method = program!.methods
-        .addTrustee()
-        .accounts({
-          patient: patientPk!,
-          trustee: trusteePk,
-          trusteeAccount: trusteePda,
-          systemProgram: SystemProgram.programId,
-        });
+
+      const method = program!.methods.addTrustee().accounts({
+        patient: patientPk!,
+        trustee: trusteePk,
+        trusteeAccount: trusteePda,
+        systemProgram: SystemProgram.programId,
+      });
 
       const ix = await method.instruction();
       const { blockhash } = await connection.getLatestBlockhash("finalized");
-      const tx = new Transaction({ feePayer: patientPk!, recentBlockhash: blockhash }).add(ix);
+      const tx = new Transaction({
+        feePayer: patientPk!,
+        recentBlockhash: blockhash,
+      }).add(ix);
 
       const signedByPatient = await wallet!.signTransaction(tx);
-      const b64 = Buffer.from(signedByPatient.serialize({ requireAllSignatures: false })).toString("base64");
+      const b64 = Buffer.from(
+        signedByPatient.serialize({ requireAllSignatures: false })
+      ).toString("base64");
       setPendingB64(b64);
 
-      if (typeof window !== "undefined") {
-        const url = `${window.location.origin}/co-sign-trustee?tx=${encodeURIComponent(b64)}`;
-        setShareUrl(url);
-      }
-
-      setStatus("Share this with the trustee. They will co-sign & submit.");
-    } catch (e: any) {
-      setErr(e.message ?? String(e));
-    }
-  };
-
-  // === Revoke Trustee ===
-  const revokeTrustee = async (trusteePk: string) => {
-    try {
-      setErr(""); setStatus(""); setSig("");
-      ensureReady();
-
-      const trusteePda = findTrusteePda(programId, patientPk!, new PublicKey(trusteePk));
-
-      const txSig = await program!.methods
-        .revokeTrustee()
-        .accounts({
-          authority: wallet!.publicKey,
-          patient: patientPda,
-          trusteeAccount: trusteePda,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
-
-      setSig(txSig);
-      setStatus("✅ Trustee revoked successfully.");
-      await loadTrustees();
+      setStatus("✅ Transaction prepared. Share QR with trustee to co-sign.");
     } catch (e: any) {
       setErr(e.message ?? String(e));
     }
   };
 
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-6">
-      <header className="flex justify-between items-center">
-        <h1 className="text-xl font-semibold">Trustee Manager</h1>
-        <WalletMultiButton />
+    <main className="my-5">
+      <header className="font-architekt p-2 border rounded-xs">
+        <div className="flex font-bold gap-x-2 items-center">
+          <Search size={20} />
+          Add a Trustee
+        </div>
       </header>
 
       {patientExists === false && (
-        <div className="rounded border border-red-600/40 bg-red-600/10 p-3 text-sm text-red-600">
-          You haven’t registered as a patient yet.
-        </div>
+        <StatusBanner type="error">
+          ❌ You haven&apos;t registered as a patient yet.
+        </StatusBanner>
       )}
 
       {/* ADD TRUSTEE FORM */}
-      <section className="space-y-3">
-        <input
-          className="rounded border px-3 py-2 font-mono text-sm w-full"
-          placeholder="trustee wallet pubkey"
-          value={trusteeStr}
-          onChange={(e) => setTrusteeStr(e.target.value)}
-        />
+      <section className="relative mt-2">
+        <div className="flex gap-x-2 items-center">
+          <Input
+            placeholder="Trustee wallet pubkey"
+            value={trusteeStr}
+            onChange={(e) => setTrusteeStr(e.target.value)}
+            onFocus={() => setTrusteeValid(null)}
+          />
 
-        {trusteeValid === true && <div className="text-sm text-green-600">✅ Trustee is a registered user.</div>}
-        {trusteeValid === false && <div className="text-sm text-red-600">❌ This wallet has no Patient account yet.</div>}
+          {/* Clear button */}
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setTrusteeStr("");
+              setTrusteeValid(null);
+              setErr("");
+              setStatus("");
+              setPendingB64("");
+            }}
+          >
+            Clear
+          </Button>
 
-        <button
-          onClick={prepareAddTrustee}
-          disabled={!patientExists || !trusteeStr.trim() || trusteeValid !== true}
-          className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
-        >
-          Prepare Add Trustee (patient signs)
-        </button>
+          {/* Scan QR button */}
+          <Button
+            variant="outline"
+            onClick={() => setScanModalOpen(true)}
+            title="Scan QR to fill trustee pubkey"
+          >
+            <QrCode className="w-4 h-4 mr-2" /> Scan QR
+          </Button>
 
-        {status && <p className="text-sm whitespace-pre-wrap">{status}</p>}
+          {/* Add Trustee button */}
+          <Button
+            onClick={prepareAddTrustee}
+            disabled={
+              !patientExists || !trusteeStr.trim() || trusteeValid !== true
+            }
+            variant={"outline"}
+          >
+            Add Trustee
+          </Button>
+        </div>
 
+        <div className="mt-2">
+          {trusteeValid === true && (
+            <StatusBanner type="success">
+              ✅ Trustee is a registered user.
+            </StatusBanner>
+          )}
+
+          {trusteeValid === false && (
+            <StatusBanner type="error">
+              ❌ This wallet has no Patient account yet.
+            </StatusBanner>
+          )}
+        </div>
+
+        {/* QR Display */}
         {pendingB64 && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Base64 transaction (patient-signed). Send to the trustee:</label>
-            <textarea
-              readOnly
-              className="w-full border rounded p-2 text-xs font-mono h-32"
-              value={pendingB64}
-            />
-            {shareUrl && (
-              <p className="text-xs break-all">
-                Or share this link:{" "}
-                <a className="underline" href={shareUrl} target="_blank" rel="noreferrer">
-                  {shareUrl}
-                </a>
-              </p>
-            )}
+          <div className="flex flex-col items-center gap-4 text-center mt-4">
+            <p className="text-sm text-muted-foreground">
+              Scan this QR on the trustee&apos;s device to co-sign:
+            </p>
+
+            <div className="p-3 border rounded bg-white dark:bg-black">
+              <QRCodeCanvas
+                value={pendingB64}
+                size={256}
+                level="L"
+                includeMargin
+              />
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(pendingB64);
+                  toast.success("Copied QR payload to clipboard");
+                } catch {
+                  toast.error("Failed to copy");
+                }
+              }}
+            >
+              Copy Payload
+            </Button>
           </div>
         )}
       </section>
 
-      {/* REVOKE + LIST */}
-      {sig && (
-        <p className="text-sm">
-          Tx: <span className="font-mono">{sig}</span>
-        </p>
-      )}
-      {err && <p className="text-sm text-red-600 whitespace-pre-wrap">{err}</p>}
+      {/* QR SCANNER MODAL */}
+      <GeneralModal
+        open={scanModalOpen}
+        onOpenChange={setScanModalOpen}
+        title="Scan Trustee QR"
+        size="md"
+        disablePadding
+      >
+        <div className="flex flex-col items-center justify-center p-4 gap-4">
+          <p className="text-sm text-muted-foreground text-center">
+            Scan a QR code containing a trustee wallet address.
+          </p>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Trustees</h2>
-        {loading && <p className="text-sm">Loading…</p>}
-        <div className="space-y-3">
-          {trustees.map((t) => (
-            <div key={t.pubkey} className="rounded border p-3 text-sm">
-              <p><b>PDA:</b> <span className="font-mono">{t.pubkey}</span></p>
-              <p><b>Trustee:</b> <span className="font-mono">{t.trustee}</span></p>
-              <p><b>Added By:</b> <span className="font-mono">{t.addedBy}</span></p>
-              <p><b>Created At:</b> {new Date(t.createdAt * 1000).toLocaleString()}</p>
-              <p><b>Status:</b> {t.revoked ? "Revoked" : "Active"}</p>
+          <div className="relative w-full aspect-square bg-black rounded overflow-hidden">
+            <Scanner
+              allowMultiple={false}
+              constraints={{
+                facingMode: "environment",
+                deviceId: selectedDevice || undefined,
+              }}
+              components={{
+                finder: true,
+              }}
+              onScan={(result) => {
+                if (result?.[0]?.rawValue) {
+                  const text = result[0].rawValue.trim();
+                  setTrusteeStr(text);
+                  setScanModalOpen(false);
+                  toast.success("QR scanned successfully!");
+                }
+              }}
+              onError={(error) => {
+                console.error(error);
+                toast.error("Camera error or permission denied");
+              }}
+            />
+          </div>
 
-              {!t.revoked && (
-                <button
-                  className="mt-2 rounded border px-3 py-1 text-xs"
-                  onClick={() => revokeTrustee(t.trustee)}
-                >
-                  Revoke Trustee
-                </button>
-              )}
-            </div>
-          ))}
-          {!loading && trustees.length === 0 && <p className="text-sm">No trustees found.</p>}
+          {devices.length > 1 && (
+            <select
+              className="mt-2 text-sm bg-white dark:bg-gray-800 p-2 rounded border"
+              onChange={(e) => setSelectedDevice(e.target.value || null)}
+              value={selectedDevice ?? ""}
+            >
+              <option value="">Default Camera</option>
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Camera ${d.deviceId}`}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
-      </section>
+      </GeneralModal>
     </main>
   );
 }

@@ -78,7 +78,7 @@ export default function Page() {
   };
 
   return (
-    <main className="my-6">
+    <main className="my-5">
       <div className="flex flex-col">
         <h1 className="text-xl font-bold mb-5">CO-SIGN RECORD</h1>
 
