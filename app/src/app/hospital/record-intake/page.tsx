@@ -63,9 +63,6 @@ export default function Page() {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
   const { signTransaction: waSignTx } = useWallet(); // <-- ADDED
-  const [patientCheckStatus, setPatientCheckStatus] = useState<string | null>(
-    null
-  );
   const [status, setStatus] = useState("");
 
   // --- LIVE CHECKS STATE ---
@@ -79,7 +76,6 @@ export default function Page() {
   // --- CO-SIGN STATE (COPIED) ---
   const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
   const [coSignBase64, setCoSignBase64] = useState("");
-  const [shareUrl, setShareUrl] = useState(""); // <-- ADDED from base logic
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -179,40 +175,23 @@ export default function Page() {
 
   // Check 2: Does the patient pubkey exist?
   useEffect(() => {
-    const checkPatient = async () => {
-      if (!program || !patientPk) {
-        setPatientAccountOk(null);
-        if (record?.patient_pubkey) {
-          setPatientCheckStatus("❌ Invalid Pubkey format");
-        } else {
-          setPatientCheckStatus(null);
-        }
+    (async () => {
+      if (!program || !wallet?.publicKey) {
+        setHospitalOk(null);
         return;
       }
-
       try {
-        setPatientCheckStatus("Checking patient account...");
-        const patientPda = findPatientPda(program.programId, patientPk);
+        const hospitalPda = findHospitalPda(program.programId, wallet.publicKey);
         // @ts-expect-error anchor typing
-        const pAcc = await program.account.patient.fetchNullable(patientPda);
-
-        if (pAcc) {
-          setPatientAccountOk(true);
-          setPatientCheckStatus("✅ Patient account exists on-chain.");
-        } else {
-          setPatientAccountOk(false);
-          setPatientCheckStatus(
-            "❌ Patient account not found (not registered)."
-          );
-        }
-      } catch (e: any) {
-        setPatientAccountOk(false);
-        setPatientCheckStatus(`Error: ${e.message}`);
+        const hAcc = await program.account.hospital.fetchNullable(hospitalPda);
+        setHospitalOk(!!hAcc);
+      } catch {
+        setHospitalOk(false);
       }
-    };
+    })();
+  }, [program, wallet?.publicKey, patientPk]); // ✅ add patientPk
 
-    checkPatient();
-  }, [program, patientPk?.toBase58()]);
+
 
   // Check 3: Does this hospital have a Write Grant from this patient?
   useEffect(() => {
@@ -222,46 +201,27 @@ export default function Page() {
         setGrantOk(null);
         return;
       }
+
       try {
         const patientPda = findPatientPda(program.programId, patientPk);
         const grantWritePda = findGrantPda(
           program.programId,
           patientPda,
           wallet.publicKey,
-          2 // GrantLevel.Write
+          2
         );
         // @ts-expect-error anchor typing
         const gAcc = await program.account.grant.fetchNullable(grantWritePda);
-        if (!gAcc) {
-          setGrantOk(false);
-          setGrantErr("Grant not found");
-          return;
-        }
-        if (gAcc.revoked) {
-          setGrantOk(false);
-          setGrantErr("Grant revoked");
-          return;
-        }
+        if (!gAcc || gAcc.revoked) return setGrantOk(false);
         setGrantOk(true);
       } catch (e: any) {
         setGrantOk(false);
         setGrantErr(e?.message ?? "Grant check failed");
       }
     })();
-  }, [program, wallet?.publicKey, patientPk?.toBase58()]);
+  }, [program, wallet?.publicKey, patientPk]); 
 
-  // --- EFFECT FOR SHARE URL (COPIED) ---
-  useEffect(() => {
-    if (coSignBase64 && typeof window !== "undefined") {
-      setShareUrl(
-        `${window.location.origin}/co-sign?tx=${encodeURIComponent(
-          coSignBase64
-        )}`
-      );
-    } else {
-      setShareUrl("");
-    }
-  }, [coSignBase64]);
+
 
   // ==================== FETCH HOSPITAL INFO ====================
   useEffect(() => {
@@ -556,23 +516,6 @@ export default function Page() {
     }
   };
 
-  // ==================== FIELD CONFIG ====================
-  const fields: {
-    key: keyof MedicalRecord;
-    label: string;
-    textarea?: boolean;
-    fillable?: boolean;
-  }[] = [
-    // ... (This array remains unchanged) ...
-    { key: "patient_pubkey", label: "Patient Pubkey" },
-    { key: "hospital_pubkey", label: "Hospital Pubkey", fillable: true },
-    { key: "hospital_name", label: "Hospital Name", fillable: true },
-    { key: "doctor_name", label: "Doctor Name" },
-    { key: "diagnosis", label: "Diagnosis" },
-    { key: "keywords", label: "Keywords" },
-    { key: "description", label: "Description", textarea: true },
-  ];
-
   // --- READY STATE ---
   const readyToSubmit =
     !!program &&
@@ -591,7 +534,6 @@ export default function Page() {
     setImages([]);
     setPreviews([]);
     setStatus("");
-    setPatientCheckStatus(null);
     setHospitalOk(null);
     setPatientAccountOk(null);
     setGrantOk(null);

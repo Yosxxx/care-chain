@@ -19,7 +19,6 @@ import {
   findConfigPda,
   findTrusteePda,
 } from "@/lib/pda";
-import { SCOPE_OPTIONS } from "@/lib/constants";
 
 // Import shadcn/ui components
 import { Button } from "@/components/ui/button";
@@ -65,11 +64,6 @@ type GrantUi = {
 
 // --- CONSTANTS ---
 const GRANTS_PER_PAGE = 5;
-
-// Filter out the "Admin" scope
-const renderableScopeOptions = SCOPE_OPTIONS.filter(
-  (opt) => opt.label.toLowerCase() !== "admin"
-);
 
 export default function Page() {
   const { connection } = useConnection();
@@ -158,6 +152,7 @@ export default function Page() {
     (async () => {
       if (!program) return;
       try {
+        // @ts-expect-error Node File type mismatch with Web File
         const allHospitals = await program.account.hospital.all();
         const map: Record<string, string> = {};
         for (const h of allHospitals as any[]) {
@@ -214,7 +209,7 @@ export default function Page() {
       if (grantee) {
         filters.push({ memcmp: { offset: 8 + 32, bytes: grantee.toBase58() } });
       }
-
+// @ts-expect-error Node File type mismatch with Web File
       const raw = await program.account.grant.all(filters as any);
       const rows: GrantUi[] = raw.map((r: any) => ({
         pubkey: r.publicKey.toBase58(),
@@ -255,27 +250,6 @@ export default function Page() {
     for (const g of grants) if (!g.revoked) m[g.scope] = true;
     return m;
   }, [grants]);
-  const [desired, setDesired] = useState<Record<number, boolean>>({});
-
-  useEffect(() => {
-    setDesired(current);
-  }, [current]);
-
-  const flip = (bit: number) => setDesired((d) => ({ ...d, [bit]: !d[bit] }));
-
-  // --- BN parsing (unchanged) ---
-  const bnOpt = (durationStr: string): anchor.BN | null => {
-    const t = durationStr.trim();
-    if (!t) return null;
-    if (!/^\d+$/.test(t)) {
-      throw new Error(
-        "Expiry must be a positive integer (duration in seconds)"
-      );
-    }
-    const durationSecs = parseInt(t, 10);
-    if (durationSecs <= 0) throw new Error("Duration must be > 0 seconds");
-    return new anchor.BN(durationSecs);
-  };
 
   // --- Validation (unchanged) ---
   const ensureReady = () => {
@@ -315,20 +289,22 @@ export default function Page() {
     );
 
     // Construct and send transaction
-    const tx = await program!.methods
-      .grantAccess(scopeByte)
-      .accounts({
-        authority: wallet!.publicKey,
-        config: configPda,
-        patient: patientPda!,
-        grant: grantPda,
-        grantee: grantee!,
-        ...(trusteeExists
-          ? { trusteeAccount: trusteePda }
-          : { trusteeAccount: null }),
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
+    
+  const tx = await program!.methods
+    .grantAccess(scopeByte)
+    .accounts({
+      authority: wallet!.publicKey,
+      config: configPda,
+      patient: patientPda!,
+      grant: grantPda,
+      grantee: grantee!,
+      ...(trusteeExists
+        ? { trusteeAccount: trusteePda }
+        : { trusteeAccount: null as any }), // 👈 suppress TS type error only
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
 
     setSig(tx);
   };
@@ -352,36 +328,6 @@ export default function Page() {
       .rpc();
 
     setSig(tx);
-  };
-
-  // --- Main save function (unchanged) ---
-  const save = async () => {
-    try {
-      for (const { bit } of renderableScopeOptions) {
-        const want = !!desired[bit];
-        const have = !!current[bit];
-        if (want && !have) {
-          await upsertOne(bit);
-          await loadGrants();
-        } else if (!want && have) {
-          await revokeOne(bit);
-          await loadGrants();
-        }
-      }
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
-  };
-
-  const revokeAll = async () => {
-    try {
-      for (const { bit } of renderableScopeOptions) {
-        if (current[bit]) await revokeOne(bit);
-      }
-      await loadGrants();
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    }
   };
 
   // --- Revoke all (User commented out) ---

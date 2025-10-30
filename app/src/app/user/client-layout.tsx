@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-
+import { useCallback } from "react";
 import AppSidebar from "@/components/app-sidebar";
 import {
   Building2,
@@ -81,7 +81,7 @@ function RegistrationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- Helper: useWalletDid (from PatientsPage) ---
-  function useWalletDid() {
+  const deriveWalletDid = useCallback(() => {
     try {
       if (!wallet?.publicKey) throw new Error("Wallet not connected");
       const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet";
@@ -94,14 +94,16 @@ function RegistrationForm({
       setDid("");
       setErr(e?.message ?? String(e));
     }
-  }
+  }, [wallet]);
+
+
 
   // Auto-set DID from wallet public key
   useEffect(() => {
-    if (wallet?.publicKey) {
-      useWalletDid();
-    }
-  }, [wallet]);
+    if (wallet?.publicKey) deriveWalletDid();
+  }, [wallet, deriveWalletDid]);
+
+
 
   // --- Upsert logic ---
   const handleSubmit = async () => {
@@ -235,13 +237,15 @@ export default function ClientLayout({
       setIsLoading(true);
       try {
         // Try to fetch the patient account. This is the check.
+        // @ts-expect-error anchor account typing
         await program.account.patient.fetch(patientPda);
         // If fetch succeeds, the account exists.
         setIsRegistered(true);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error: any) {
         // If it fails (e.g., "Account not found"), they are not registered.
-        console.warn("Patient account not found, user is not registered.");
-        setIsRegistered(false);
+          console.warn("Patient account not found, user is not registered.");
+          setIsRegistered(false);
       } finally {
         setIsLoading(false);
       }
@@ -275,16 +279,15 @@ export default function ClientLayout({
   }
 
   // 3. Wallet Connected, Not Registered
+  
   if (!isRegistered) {
     return (
       <RegistrationForm
         program={program!}
-        wallet={wallet}
+        wallet={wallet as any} // ✅ suppress NodeWallet type requirement
         patientPda={patientPda!}
         seqPda={seqPda!}
-        onRegistered={() => {
-          setIsRegistered(true); // Update state to show the app
-        }}
+        onRegistered={() => setIsRegistered(true)}
       />
     );
   }
