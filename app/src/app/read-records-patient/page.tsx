@@ -19,20 +19,16 @@ type Rec = {
   pda: string;
   cidEnc: string;
   metaCid: string;
-  // note: string; // <-- REMOVED
-  hospital: string; // This is the hospital PDA
+  hospital: string;
   sizeBytes: number;
   createdAt: string;
 
-  // --- ADD NEW FIELDS ---
-  hospital_id: string;
-  hospital_name: string;
-  doctor_name: string;
-  doctor_id: string;
-  diagnosis: string;
-  keywords: string;
-  description: string;
-  // --- END NEW FIELDS ---
+  // display fields from meta.json
+  hospital_name?: string;
+  doctor_name?: string;
+  diagnosis?: string;
+  keywords?: string;
+  description?: string;
 };
 
 function deriveNonce(b: Uint8Array, idx: number) {
@@ -59,7 +55,7 @@ export default function ReadRecordsPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // Viewer State
+  // Viewer state
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerMime, setViewerMime] = useState<string | null>(null);
   const [textPreview, setTextPreview] = useState<string | null>(null);
@@ -69,19 +65,17 @@ export default function ReadRecordsPage() {
   const patientPk = publicKey ?? null;
   const disabled = !ready || !program || !patientPk;
 
-  // ---------- auto fetch on wallet connect ----------
+  // ========== Auto fetch ==========
   useEffect(() => {
     (async () => {
       setErr("");
       setRecords([]);
       setPatientOk(null);
-
       if (disabled) return;
 
       try {
-        // Check patient is registered
         const patientPda = findPatientPda(programId, patientPk!);
-        // @ts-expect-error anchor typing
+        // @ts-expect-error
         const pAcc = await program!.account.patient.fetchNullable(patientPda);
         if (!pAcc) {
           setPatientOk(false);
@@ -89,13 +83,12 @@ export default function ReadRecordsPage() {
         }
         setPatientOk(true);
 
-        // Read sequence
         const seqPda = findPatientSeqPda(programId, patientPda);
         // @ts-expect-error
-        const seqAcc = await (program!.account as any).patientSeq.fetch(seqPda);
+        const seqAcc = await program!.account.patientSeq.fetch(seqPda);
         const total = Number(seqAcc.value);
-
         const out: Rec[] = [];
+
         for (let i = 0; i < total; i++) {
           const recordPda = PublicKey.findProgramAddressSync(
             [
@@ -106,32 +99,36 @@ export default function ReadRecordsPage() {
             programId
           )[0];
 
-          // @ts-expect-error Anchor typing
-          const rec = await (program!.account as any).record.fetch(recordPda);
+          // @ts-expect-error
+          const rec = await program!.account.record.fetch(recordPda);
+
+          // Fetch meta.json from IPFS
+          let meta: any = {};
+          try {
+            const metaRes = await fetch(ipfsGateway(rec.metaCid), { cache: "no-store" });
+            meta = await metaRes.json();
+          } catch (e) {
+            console.warn(`Failed to fetch meta.json for ${rec.metaCid}`);
+          }
 
           out.push({
             seq: i,
             pda: recordPda.toBase58(),
             cidEnc: rec.cidEnc,
             metaCid: rec.metaCid,
-            // note: rec.note, // <-- REMOVED
             hospital: rec.hospital.toBase58(),
             sizeBytes: Number(rec.sizeBytes),
             createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
 
-            // --- ADD NEW FIELDS (use camelCase from Anchor) ---
-            hospital_id: rec.hospitalId,
-            hospital_name: rec.hospitalName,
-            doctor_name: rec.doctorName,
-            doctor_id: rec.doctorId,
-            diagnosis: rec.diagnosis,
-            keywords: rec.keywords,
-            description: rec.description,
-            // --- END NEW FIELDS ---
+            // extracted from IPFS meta JSON
+            hospital_name: meta.hospital_name || "",
+            doctor_name: meta.doctor_name || "",
+            diagnosis: meta.diagnosis || "",
+            keywords: meta.keywords || "",
+            description: meta.description || "",
           });
         }
 
-        // newest first
         setRecords(out.reverse());
       } catch (e: any) {
         setErr(e?.message ?? String(e));
@@ -139,9 +136,9 @@ export default function ReadRecordsPage() {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, program, programId.toBase58(), patientPk?.toBase58()]);
 
+  // ========== Decrypt and View ==========
   async function decryptAndView(rec: Rec) {
     try {
       setErr("");
@@ -152,38 +149,34 @@ export default function ReadRecordsPage() {
       setZoom(1);
 
       await sodium.ready;
-
-      // 1) Load meta
       const meta = await (await fetch(ipfsGateway(rec.metaCid), { cache: "no-store" })).json();
 
-      const chunkSize: number =
-        meta.chunk_size ?? 1024 * 1024; // server used 1MB
+      const chunkSize: number = meta.chunk_size ?? 1024 * 1024;
       const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
       const aad = new TextEncoder().encode(meta.aad || "");
       const contentType = meta.original_content_type || "application/octet-stream";
 
-      // 2) Unwrap DEK — your existing endpoint that returns { dek_b64 }
-      // (If you want to use /read-record/dec you must provide the patient's Ed25519 SK,
-      // which wallets do not expose; keeping unwrap-dek keeps UX simple.)
-      const unwrap = await (await fetch("/api/unwrap-dek", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          wrapped_dek_b64: meta.wrapped_dek,
-          recordId: meta.aad, // <<< must match what was used at encrypt time
-        }),
-      })).json();
+      const unwrap = await (
+        await fetch("/api/unwrap-dek", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            wrapped_dek_b64: meta.wrapped_dek,
+            recordId: meta.aad,
+          }),
+        })
+      ).json();
 
       if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
       const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
 
-      // 3) Download full ciphertext and slice deterministically
       const res = await fetch(ipfsGateway(rec.cidEnc), { cache: "no-store" });
       const encBuf = new Uint8Array(await res.arrayBuffer());
 
       const chunks: Uint8Array[] = [];
       const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
-      let off = 0, idx = 0;
+      let off = 0,
+        idx = 0;
 
       while (off < encBuf.length) {
         const clen = Math.min(chunkSize + TAG, encBuf.length - off);
@@ -192,15 +185,22 @@ export default function ReadRecordsPage() {
 
         const nonce = deriveNonce(nonceBase, idx++);
         const plain = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null, cipher, aad, nonce, DEK
+          null,
+          cipher,
+          aad,
+          nonce,
+          DEK
         );
         chunks.push(plain);
       }
 
-
       const total = chunks.reduce((n, c) => n + c.length, 0);
       const merged = new Uint8Array(total);
-      let p = 0; for (const c of chunks) { merged.set(c, p); p += c.length; }
+      let p = 0;
+      for (const c of chunks) {
+        merged.set(c, p);
+        p += c.length;
+      }
 
       const blob = new Blob([merged], { type: contentType });
       const url = URL.createObjectURL(blob);
@@ -218,13 +218,10 @@ export default function ReadRecordsPage() {
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Read & Decrypt Records</h1>
+        <h1 className="text-xl font-semibold">My Records</h1>
         <WalletMultiButton />
       </header>
 
-      <h1 className="text-xl font-semibold">Read & Decrypt Records</h1>
-
-      {/* Connection / registration banners */}
       <div className="text-sm space-y-2">
         {!publicKey && (
           <div className="rounded border border-yellow-600/40 bg-yellow-600/10 p-2 text-yellow-600">
@@ -247,49 +244,47 @@ export default function ReadRecordsPage() {
       {loading && <p>Loading records…</p>}
 
       {records.map((r) => (
-        <div key={r.pda} className="border rounded-lg p-4 text-sm space-y-3 shadow-sm">
-          {/* Card Header */}
+        <div
+          key={r.pda}
+          className="border rounded-lg p-4 text-sm space-y-3 shadow-sm bg-white/5"
+        >
           <div className="flex justify-between items-center pb-2 border-b">
             <div className="font-semibold text-base">Record #{r.seq}</div>
             <div className="text-xs text-gray-500">{r.createdAt}</div>
           </div>
 
-          {/* On-Chain Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div>
               <div className="text-gray-500 font-medium">Hospital</div>
               <div>{r.hospital_name || <span className="opacity-50">(N/A)</span>}</div>
-              <div className="font-mono text-gray-400">{r.hospital_id || "N/A"}</div>
             </div>
             <div>
               <div className="text-gray-500 font-medium">Doctor</div>
               <div>{r.doctor_name || <span className="opacity-50">(N/A)</span>}</div>
-              <div className="font-mono text-gray-400">{r.doctor_id || "N/A"}</div>
             </div>
           </div>
 
           {r.diagnosis && (
             <div className="pt-1">
               <div className="font-medium text-xs text-gray-500">Diagnosis</div>
-              <p className="text-sm text-black">{r.diagnosis}</p>
+              <p className="text-gray-400">{r.diagnosis}</p>
             </div>
           )}
-          
+
           {r.description && (
             <div className="pt-1">
               <div className="font-medium text-xs text-gray-500">Description</div>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.description}</p>
+              <p className="text-gray-400 whitespace-pre-wrap">{r.description}</p>
             </div>
           )}
 
           {r.keywords && (
             <div className="pt-1">
               <div className="font-medium text-xs text-gray-500">Keywords</div>
-              <p className="text-xs text-gray-600">{r.keywords}</p>
+              <p className="text-gray-400">{r.keywords}</p>
             </div>
           )}
 
-          {/* Action Button */}
           <div className="pt-3 border-t">
             <button
               className="text-blue-600 hover:text-blue-800 underline disabled:opacity-50 font-medium"
@@ -300,27 +295,36 @@ export default function ReadRecordsPage() {
             </button>
           </div>
 
-          {/* Technical Details (Optional: can be hidden in a details/summary tag) */}
           <details className="pt-2 text-xs text-gray-400">
-            <summary className="cursor-pointer hover:text-gray-600">Technical Details</summary>
+            <summary className="cursor-pointer hover:text-gray-600">
+              Technical Details
+            </summary>
             <div className="font-mono break-all space-y-1 pt-2">
-              <div><span className="text-gray-500">PDA:</span> {r.pda}</div>
-              <div><span className="text-gray-500">CID Enc:</span> {r.cidEnc}</div>
-              <div><span className="text-gray-500">Hospital PDA:</span> {r.hospital}</div>
+              <div>
+                <span className="text-gray-500">PDA:</span> {r.pda}
+              </div>
+              <div>
+                <span className="text-gray-500">CID Enc:</span> {r.cidEnc}
+              </div>
+              <div>
+                <span className="text-gray-500">Hospital PDA:</span> {r.hospital}
+              </div>
             </div>
           </details>
-
         </div>
       ))}
 
-      {/* Viewer Modal */}
       {openViewer && viewerUrl && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur flex flex-col z-[9999]">
           <div className="flex items-center gap-3 bg-black/40 text-white p-3">
             <button onClick={() => setOpenViewer(false)}>✕ Close</button>
-            <a href={viewerUrl} download className="underline">Download</a>
+            <a href={viewerUrl} download className="underline">
+              Download
+            </a>
             <button onClick={() => setZoom((z) => z + 0.1)}>Zoom +</button>
-            <button onClick={() => setZoom((z) => Math.max(0.2, z - 0.1))}>Zoom −</button>
+            <button onClick={() => setZoom((z) => Math.max(0.2, z - 0.1))}>
+              Zoom −
+            </button>
             <button onClick={() => setZoom(1)}>Fit</button>
           </div>
 

@@ -28,17 +28,17 @@ const WalletMultiButton = dynamic(
 export default function CreateRecordPage() {
   const { connection } = useConnection();
 
-  // Anchor wallet for provider; useWallet for signTransaction access.
   const anchorWallet = useAnchorWallet();
   const { signTransaction: waSignTx } = useWallet();
 
-  const [patientStr, setPatientStr] = useState(""); // base58 Solana address of patient
+  const [patientStr, setPatientStr] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState({
-    hospital_id: "",
+    // on-chain
     hospital_name: "",
     doctor_name: "",
-    doctor_id: "",
+
+    // ipfs
     diagnosis: "",
     keywords: "",
     description: "",
@@ -47,10 +47,8 @@ export default function CreateRecordPage() {
   const [coSignBase64, setCoSignBase64] = useState("");
   const [shareUrl, setShareUrl] = useState("");
 
-  // Keep the built instruction so we can refresh with a new blockhash
   const [lastIx, setLastIx] = useState<TransactionInstruction | null>(null);
 
-  // Live checks
   const [hospitalOk, setHospitalOk] = useState<boolean | null>(null);
   const [patientOk, setPatientOk] = useState<boolean | null>(null);
   const [grantOk, setGrantOk] = useState<boolean | null>(null);
@@ -85,7 +83,6 @@ export default function CreateRecordPage() {
   const handleChange = (k: string, v: string) =>
     setMeta((m) => ({ ...m, [k]: v }));
 
-  // ---------- helpers ----------
   const u8ToB64 = (u8: Uint8Array) => Buffer.from(u8).toString("base64");
   const hexToU8 = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
   const b64ToU8 = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
@@ -109,6 +106,12 @@ export default function CreateRecordPage() {
     fd.append("contentType", file.type || "application/octet-stream");
     fd.append("patientPk_b64", patientPk_b64);
     fd.append("rsCreatorPk_b64", hospitalPk_b64);
+
+    fd.append("hospital_name", meta.hospital_name);
+    fd.append("doctor_name", meta.doctor_name);
+    fd.append("diagnosis", meta.diagnosis);
+    fd.append("keywords", meta.keywords);
+    fd.append("description", meta.description);
 
     const r = await fetch("/create-record/enc-upload", { method: "POST", body: fd });
     const text = await r.text();
@@ -181,7 +184,6 @@ export default function CreateRecordPage() {
     })();
   }, [program, anchorWallet?.publicKey, patientPk?.toBase58()]);
 
-  // Build shareable URL when base64 changes
   useEffect(() => {
     if (coSignBase64 && typeof window !== "undefined") {
       setShareUrl(`${window.location.origin}/co-sign?tx=${encodeURIComponent(coSignBase64)}`);
@@ -206,7 +208,6 @@ export default function CreateRecordPage() {
       const hospitalPda = findHospitalPda(programId, anchorWallet.publicKey);
       const grantWritePda = findGrantPda(programId, patientPda, anchorWallet.publicKey, 2);
 
-      // Base64 public keys for the upload service
       const patientPk_b64 = u8ToB64(bs58.decode(patientStr.trim()));
       const hospitalPk_b64 = u8ToB64(anchorWallet.publicKey.toBytes());
 
@@ -234,7 +235,6 @@ export default function CreateRecordPage() {
       const edekForPatient = Buffer.from(b64ToU8(edekPatient_b64));
       const edekForHospital = Buffer.from(b64ToU8(edekHospital_b64));
 
-      // Build Anchor method and obtain the raw instruction
       const method = program.methods
         .createRecord(
           seq,
@@ -246,24 +246,19 @@ export default function CreateRecordPage() {
           edekRoot,
           edekForPatient,
           edekForHospital,
-          { kms: {} }, // edek_root_algo
-          { kms: {} }, // edek_patient_algo
-          { kms: {} }, // edek_hospital_algo
+          { kms: {} },
+          { kms: {} },
+          { kms: {} },
           kmsRef,
-          1, // enc_version
-          { xChaCha20: {} }, // enc_algo
-          // extra metadata
-          meta.hospital_id,
+          1,
+          { xChaCha20: {} },
+          // extra metadata (no id fields)
           meta.hospital_name,
           meta.doctor_name,
-          meta.doctor_id,
-          meta.diagnosis,
-          meta.keywords,
-          meta.description
         )
         .accounts({
-          uploader: anchorWallet.publicKey, // hospital signer
-          payer: patientPk,                 // patient co-signer (rent payer)
+          uploader: anchorWallet.publicKey,
+          payer: patientPk,
           config: configPda,
           patient: patientPda,
           patientSeq: patientSeqPda,
@@ -276,7 +271,6 @@ export default function CreateRecordPage() {
           systemProgram: SystemProgram.programId,
         });
 
-      // If both are the same wallet (dev), just send normally
       if (anchorWallet.publicKey.equals(patientPk)) {
         setStatus("Submitting (single-signer test path)...");
         const sig = await method.rpc();
@@ -284,47 +278,41 @@ export default function CreateRecordPage() {
         return;
       }
 
-      // ---------- Multi-sign path (Hospital pays network fee) ----------
       setStatus("Building instruction...");
       const ix = await method.instruction();
-      setLastIx(ix); // save for refresh
+      setLastIx(ix);
 
       setStatus("Compiling legacy message (feePayer = hospital)...");
       const { blockhash } = await connection.getLatestBlockhash("finalized");
 
       const ltx = new Transaction({
-        feePayer: anchorWallet.publicKey,   // hospital pays fee
+        feePayer: anchorWallet.publicKey,
         recentBlockhash: blockhash,
       }).add(ix);
 
       if (!waSignTx) {
-        throw new Error(
-          "This wallet cannot sign transactions. Use Phantom/Backpack/Solflare or enable UnsafeBurnerWalletAdapter (dev only)."
-        );
+        throw new Error("This wallet cannot sign transactions. Use Phantom or Backpack.");
       }
 
-      setStatus("Signing as hospital (legacy tx)...");
+      setStatus("Signing as hospital...");
       const signedByHospital = await waSignTx(ltx);
 
-      // Serialize WITHOUT requiring all signatures (patient still missing)
       const b64 = Buffer.from(
         signedByHospital.serialize({ requireAllSignatures: false })
       ).toString("base64");
 
       setCoSignBase64(b64);
-      setStatus("Waiting for patient co-sign. Share the base64 or the link below with the patient.");
-      // -----------------------------------------------------------------
+      setStatus("Waiting for patient co-sign. Share the link or base64 below.");
     } catch (e: any) {
       const msg = e?.message || e?.toString?.() || "Unknown error";
       setStatus(`❌ ${msg}`);
     }
   };
 
-  // Rebuild & re-sign wit a fresh blockhash (when patient reports "Blockhash not found")
   const refreshCosignTx = async () => {
     try {
       if (!anchorWallet || !lastIx) return;
-      setStatus("Refreshihng co-sign transaction...");
+      setStatus("Refreshing co-sign transaction...");
       const { blockhash } = await connection.getLatestBlockhash("finalized");
       const ltx = new Transaction({
         feePayer: anchorWallet.publicKey,
@@ -345,7 +333,6 @@ export default function CreateRecordPage() {
     }
   };
 
-  // Keep the gate light; createRecord() performs full checks anyway
   const readyToSubmit =
     !!program &&
     !!anchorWallet?.publicKey &&
@@ -368,7 +355,6 @@ export default function CreateRecordPage() {
         <WalletMultiButton />
       </header>
 
-      {/* Status banners */}
       <div className="space-y-2 text-sm">
         {hospitalOk === false && (
           <div className="rounded border border-red-600/40 bg-red-600/10 p-2 text-red-600">
@@ -392,7 +378,6 @@ export default function CreateRecordPage() {
         )}
       </div>
 
-      {/* On-chain patient identity (for PDAs) */}
       <input
         className="w-full border rounded p-2 font-mono text-sm"
         placeholder="Patient Pubkey (base58)"
@@ -400,14 +385,12 @@ export default function CreateRecordPage() {
         onChange={(e) => setPatientStr(e.target.value)}
       />
 
-      {/* File to encrypt & upload */}
       <input
         type="file"
         className="w-full border rounded p-2"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
       />
 
-      {/* Optional metadata */}
       {Object.entries(meta).map(([k, v]) => (
         <input
           key={k}
@@ -428,11 +411,10 @@ export default function CreateRecordPage() {
 
       {status && <p className="text-sm mt-2 whitespace-pre-wrap">{status}</p>}
 
-      {/* Multi-sign output for patient */}
       {coSignBase64 && (
         <div className="mt-4 space-y-2">
           <label className="text-sm font-medium">
-            Base64 transaction (hospital-signed). Send to the patient to co-sign &amp; submit:
+            Base64 transaction (hospital-signed). Send to the patient:
           </label>
           <textarea
             readOnly

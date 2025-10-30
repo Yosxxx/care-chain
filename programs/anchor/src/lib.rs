@@ -44,13 +44,8 @@ pub mod anchor {
         enc_version: u16,
         enc_algo: EncAlgo,
         // --- START: NEW ARGUMENTS ---
-        hospital_id: String,
         hospital_name: String,
         doctor_name: String,
-        doctor_id: String,
-        diagnosis: String,
-        keywords: String,
-        description: String,
         // --- END: NEW ARGUMENTS ---
     ) -> Result<()> {
         record_create(
@@ -71,14 +66,8 @@ pub mod anchor {
             enc_version,
             enc_algo,
             // --- START: PASS NEW ARGUMENTS ---
-            hospital_id,
             hospital_name,
             doctor_name,
-            doctor_id,
-            diagnosis,
-            keywords,
-            description,
-            // --- END: PASS NEW ARGUMENTS ---
         )
     }
 

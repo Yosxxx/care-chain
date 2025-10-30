@@ -41,6 +41,11 @@ export async function POST(req: Request) {
   let contentType = "application/octet-stream";
   let patientPk_b64: string | null;
   let rsCreatorPk_b64: string | null;
+  let hospital_name: string = "";
+  let doctor_name: string = "";
+  let diagnosis: string = "";
+  let keywords: string = "";
+  let description: string = "";
 
   try {
     const form = await req.formData();
@@ -48,6 +53,12 @@ export async function POST(req: Request) {
     contentType = (form.get("contentType") as string) || contentType;
     patientPk_b64 = (form.get("patientPk_b64") as string) || null;
     rsCreatorPk_b64 = (form.get("rsCreatorPk_b64") as string) || null;
+
+    hospital_name = (form.get("hospital_name") as string) || "";
+    doctor_name   = (form.get("doctor_name")   as string) || "";
+    diagnosis     = (form.get("diagnosis")     as string) || "";
+    keywords      = (form.get("keywords")      as string) || "";
+    description   = (form.get("description")   as string) || "";
 
     if (!file)                return fail("A: file missing", new Error("file missing"), 400);
     if (!patientPk_b64)       return fail("A: patientPk_b64 missing", new Error("patientPk_b64 missing"), 400);
@@ -162,6 +173,11 @@ export async function POST(req: Request) {
       },
       original_content_type: contentType,
       created_at: Math.floor(Date.now() / 1000),
+      hospital_name,
+      doctor_name,
+      diagnosis,
+      keywords,
+      description,
     };
 
     const metaPin = await pinata.pinJSONToIPFS(meta, {

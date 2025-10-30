@@ -22,32 +22,27 @@ type Rec = {
     pda: string;
     cidEnc: string;
     metaCid: string;
-    hospital: string; // Hospital PDA (stored on-chain in the record)
+    hospital: string;
     sizeBytes: number;
     createdAt: string;
-    hospital_id: string;
     hospital_name: string;
     doctor_name: string;
-    doctor_id: string;
     diagnosis: string;
     keywords: string;
     description: string;
 };
 
-// ---- constants that must match your program ----
-const SCOPE_READ = 1; // MUST equal your on-chain SCOPE_READ
+const SCOPE_READ = 1;
 
-// ---- local PDA helpers (match your Rust seeds) ----
+// ---- local PDA helpers ----
 const SEED_CONFIG = Buffer.from("config");
 const SEED_RECORD = Buffer.from("record");
 const SEED_HOSPITAL = Buffer.from("hospital");
 const SEED_GRANT = Buffer.from("grant");
 
-// Hospital PDA = [ "hospital", hospital.authority ]  -> authority is the hospital wallet pubkey
 const findHospitalPda = (pid: PublicKey, hospitalAuthority: PublicKey) =>
     PublicKey.findProgramAddressSync([SEED_HOSPITAL, hospitalAuthority.toBuffer()], pid)[0];
 
-// Grant PDA = [ "grant", patient.key(), reader.key(), &[SCOPE_READ] ]
 const findGrantReadPda = (pid: PublicKey, patientPda: PublicKey, reader: PublicKey) =>
     PublicKey.findProgramAddressSync(
         [SEED_GRANT, patientPda.toBuffer(), reader.toBuffer(), Buffer.from([SCOPE_READ])],
@@ -70,7 +65,6 @@ const ipfsGateway = (cid: string) =>
         : `https://ipfs.io/ipfs/${cid}`;
 
 export default function HospitalReadPage() {
-    // Connected wallet is the HOSPITAL authority and also the READER
     const { publicKey: hospitalWallet } = useWallet();
     const { program, programId, ready } = useProgram();
 
@@ -110,7 +104,6 @@ export default function HospitalReadPage() {
 
         setLoading(true);
         try {
-            // patient PDA uses patient wallet pubkey in seeds (matches your Rust)
             const patientWalletPk = new PublicKey(patientInput.trim());
             const patientPda = findPatientPda(programId, patientWalletPk);
 
@@ -120,11 +113,11 @@ export default function HospitalReadPage() {
             if (!pAcc) { setPatientOk(false); return; }
             setPatientOk(true);
 
-            // (2) compute PDAs exactly as Rust seeds
+            // (2) compute PDAs
             const hospitalPda = findHospitalPda(programId, hospitalWallet!);
             const grantReadPda = findGrantReadPda(programId, patientPda, hospitalWallet!);
 
-            // (3) pre-check grant_read account
+            // (3) pre-check grant_read
             // @ts-expect-error
             const grantAcc = await program!.account.grant.fetchNullable(grantReadPda);
             const now = Math.floor(Date.now() / 1000);
@@ -142,38 +135,49 @@ export default function HospitalReadPage() {
             setHasGrant(true);
             setGrantExpiresAt(Number(grantAcc.expiresAt));
 
-            // (4) list records only after grant ok
+            // (4) list records and auto-fetch JSON metadata
             const patientSeqPda = findPatientSeqPda(programId, patientPda);
             // @ts-expect-error
             const seqAcc = await program!.account.patientSeq.fetch(patientSeqPda);
             const total = Number(seqAcc.value);
 
-            const out: Rec[] = [];
-            for (let i = 0; i < total; i++) {
-                const recordPda = PublicKey.findProgramAddressSync(
-                    [SEED_RECORD, patientPda.toBuffer(), new anchor.BN(i).toArrayLike(Buffer, "le", 8)],
-                    programId
-                )[0];
-                // @ts-expect-error
-                const rec = await program!.account.record.fetch(recordPda);
+            const out: Rec[] = await Promise.all(
+                Array.from({ length: total }).map(async (_, i) => {
+                    const recordPda = PublicKey.findProgramAddressSync(
+                        [SEED_RECORD, patientPda.toBuffer(), new anchor.BN(i).toArrayLike(Buffer, "le", 8)],
+                        programId
+                    )[0];
+                    // @ts-expect-error
+                    const rec = await program!.account.record.fetch(recordPda);
+                    const base: Rec = {
+                        seq: i,
+                        pda: recordPda.toBase58(),
+                        cidEnc: rec.cidEnc,
+                        metaCid: rec.metaCid,
+                        hospital: rec.hospital.toBase58(),
+                        sizeBytes: Number(rec.sizeBytes),
+                        createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
+                        hospital_name: rec.hospitalName,
+                        doctor_name: rec.doctorName,
+                        diagnosis: "",
+                        keywords: "",
+                        description: "",
+                    };
 
-                out.push({
-                    seq: i,
-                    pda: recordPda.toBase58(),
-                    cidEnc: rec.cidEnc,
-                    metaCid: rec.metaCid,
-                    hospital: rec.hospital.toBase58(), // should equal hospitalPda
-                    sizeBytes: Number(rec.sizeBytes),
-                    createdAt: new Date(Number(rec.createdAt) * 1000).toLocaleString(),
-                    hospital_id: rec.hospitalId,
-                    hospital_name: rec.hospitalName,
-                    doctor_name: rec.doctorName,
-                    doctor_id: rec.doctorId,
-                    diagnosis: rec.diagnosis,
-                    keywords: rec.keywords,
-                    description: rec.description,
-                });
-            }
+                    // auto-load IPFS metadata JSON (no decryption required)
+                    try {
+                        const meta = await (await fetch(ipfsGateway(rec.metaCid), { cache: "no-store" })).json();
+                        base.diagnosis = meta.diagnosis ?? "";
+                        base.keywords = meta.keywords ?? "";
+                        base.description = meta.description ?? "";
+                    } catch (err) {
+                        console.warn(`Failed to fetch metadata for record ${i}`, err);
+                    }
+
+                    return base;
+                })
+            );
+
             setRecords(out.reverse());
         } catch (e: any) {
             setErr(e?.message ?? String(e));
@@ -182,7 +186,6 @@ export default function HospitalReadPage() {
         }
     }
 
-    // Build accounts exactly as program expects for records_read(seq)
     const deriveIxAccounts = (rec: Rec) => {
         if (!hospitalWallet) throw new Error("Connect hospital wallet.");
         if (!patientInput.trim()) throw new Error("Patient wallet is empty.");
@@ -191,8 +194,8 @@ export default function HospitalReadPage() {
         const patientPda = findPatientPda(programId, patientWalletPk);
         const patientSeqPda = findPatientSeqPda(programId, patientPda);
         const configPda = PublicKey.findProgramAddressSync([SEED_CONFIG], programId)[0];
-        const hospitalPda = findHospitalPda(programId, hospitalWallet); // matches [hospital, authority]
-        const grantReadPda = findGrantReadPda(programId, patientPda, hospitalWallet); // [grant, patient, reader, scope]
+        const hospitalPda = findHospitalPda(programId, hospitalWallet);
+        const grantReadPda = findGrantReadPda(programId, patientPda, hospitalWallet);
         const recordPk = new PublicKey(rec.pda);
 
         return { configPda, patientPda, patientSeqPda, hospitalPda, grantReadPda, recordPk };
@@ -218,11 +221,11 @@ export default function HospitalReadPage() {
                 .readRecords(new anchor.BN(rec.seq))
                 .accounts({
                     config: configPda,
-                    reader: hospitalWallet, // signer; must match grant.grantee
+                    reader: hospitalWallet,
                     patient: patientPda,
-                    hospital: hospitalPda,    // PDA derived from hospital authority (wallet)
+                    hospital: hospitalPda,
                     patientSeq: patientSeqPda,
-                    grantRead: grantReadPda,   // [grant, patient, reader, scope]
+                    grantRead: grantReadPda,
                     record: recordPk,
                     systemProgram: anchor.web3.SystemProgram.programId,
                 })
@@ -231,14 +234,12 @@ export default function HospitalReadPage() {
             setStatus("Authorized. Fetching encrypted metadata…");
             await sodium.ready;
 
-            // fetch meta
             const meta = await (await fetch(ipfsGateway(rec.metaCid), { cache: "no-store" })).json();
             const chunkSize = meta.chunk_size ?? 1024 * 1024;
             const nonceBase = Uint8Array.from(Buffer.from(meta.nonce_base, "base64"));
             const aad = new TextEncoder().encode(meta.aad || "");
             const contentType = meta.original_content_type || "application/octet-stream";
 
-            // unwrap DEK (server should also verify grant if you want defense-in-depth)
             setStatus("Requesting KMS unwrap…");
             const unwrap = await (
                 await fetch("/api/unwrap-dek", {
@@ -250,7 +251,6 @@ export default function HospitalReadPage() {
             if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
             const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
 
-            // download + decrypt
             setStatus("Downloading & decrypting…");
             const res = await fetch(ipfsGateway(rec.cidEnc), { cache: "no-store" });
             if (!res.ok) throw new Error(`Failed to fetch ciphertext: ${res.status}`);
@@ -349,31 +349,29 @@ export default function HospitalReadPage() {
                         <div>
                             <div className="text-gray-500 font-medium">Hospital</div>
                             <div>{r.hospital_name || <span className="opacity-50">(N/A)</span>}</div>
-                            <div className="font-mono text-gray-400">{r.hospital_id || "N/A"}</div>
                         </div>
                         <div>
                             <div className="text-gray-500 font-medium">Doctor</div>
                             <div>{r.doctor_name || <span className="opacity-50">(N/A)</span>}</div>
-                            <div className="font-mono text-gray-400">{r.doctor_id || "N/A"}</div>
                         </div>
                     </div>
 
                     {r.diagnosis && (
                         <div className="pt-1">
                             <div className="font-medium text-xs text-gray-500">Diagnosis</div>
-                            <p className="text-sm text-black">{r.diagnosis}</p>
+                            <p className="text-gray-400">{r.diagnosis}</p>
                         </div>
                     )}
                     {r.description && (
                         <div className="pt-1">
                             <div className="font-medium text-xs text-gray-500">Description</div>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.description}</p>
+                            <p className="text-gray-400 whitespace-pre-wrap">{r.description}</p>
                         </div>
                     )}
                     {r.keywords && (
                         <div className="pt-1">
                             <div className="font-medium text-xs text-gray-500">Keywords</div>
-                            <p className="text-xs text-gray-600">{r.keywords}</p>
+                            <p className="text-gray-400">{r.keywords}</p>
                         </div>
                     )}
 
@@ -397,7 +395,6 @@ export default function HospitalReadPage() {
                 </div>
             ))}
 
-            {/* Viewer modal */}
             {openViewer && viewerUrl && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur flex flex-col z-[9999]">
                     <div className="flex items-center gap-3 bg-black/40 text-white p-3">

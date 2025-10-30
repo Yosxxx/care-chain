@@ -22,13 +22,8 @@ pub fn record_create(
     enc_version: u16,
     enc_algo: EncAlgo,
     // --- NEW ARGS ---
-    hospital_id: String,
     hospital_name: String,
     doctor_name: String,
-    doctor_id: String,
-    diagnosis: String,
-    keywords: String,
-    description: String,
 ) -> Result<()> {
     // 1) Global pause
     require!(!ctx.accounts.config.paused, RecordError::Paused);
@@ -59,13 +54,8 @@ pub fn record_create(
     let meta_trim = meta_cid.trim();
     let kms_trim = kms_ref.trim();
 
-    let hospital_id_trim = hospital_id.trim();
     let hospital_name_trim = hospital_name.trim();
     let doctor_name_trim = doctor_name.trim();
-    let doctor_id_trim = doctor_id.trim();
-    let diagnosis_trim = diagnosis.trim();
-    let keywords_trim = keywords.trim();
-    let description_trim = description.trim();
 
     // 6) Validate lengths & requireds
     require!(!cid_trim.is_empty(), RecordError::EmptyCidEnc);
@@ -84,32 +74,12 @@ pub fn record_create(
     );
 
     require!(
-        hospital_id_trim.len() <= MAX_HOSPITAL_ID_LEN,
-        RecordError::HospitalIdTooLong
-    );
-    require!(
         hospital_name_trim.len() <= MAX_HOSPITAL_NAME_LEN,
         RecordError::HospitalNameTooLong
     );
     require!(
         doctor_name_trim.len() <= MAX_DOCTOR_NAME_LEN,
         RecordError::DoctorNameTooLong
-    );
-    require!(
-        doctor_id_trim.len() <= MAX_DOCTOR_ID_LEN,
-        RecordError::DoctorIdTooLong
-    );
-    require!(
-        diagnosis_trim.len() <= MAX_DIAGNOSIS_LEN,
-        RecordError::DiagnosisTooLong
-    );
-    require!(
-        keywords_trim.len() <= MAX_KEYWORDS_LEN,
-        RecordError::KeywordsTooLong
-    );
-    require!(
-        description_trim.len() <= MAX_DESCRIPTION_LEN,
-        RecordError::DescriptionTooLong
     );
 
     require!(size_bytes > 0, RecordError::SizeZero);
@@ -162,13 +132,8 @@ pub fn record_create(
     rec.patient_pubkey = ctx.accounts.patient.patient_pubkey;
     rec.hospital_pubkey = ctx.accounts.hospital.authority;
 
-    rec.hospital_id = hospital_id_trim.to_string();
     rec.hospital_name = hospital_name_trim.to_string();
     rec.doctor_name = doctor_name_trim.to_string();
-    rec.doctor_id = doctor_id_trim.to_string();
-    rec.diagnosis = diagnosis_trim.to_string();
-    rec.keywords = keywords_trim.to_string();
-    rec.description = description_trim.to_string();
 
     // 9) Emit
     emit!(RecordCreated {
