@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { KmsAdapter, KmsContext } from "./kmsAdapter";
+import { DevKmsAdapter } from "./devKmsAdapter";
 
 function stableJson(obj: any) {
   const keys = Object.keys(obj || {}).sort();
@@ -28,10 +29,17 @@ export class VaultKmsAdapter implements KmsAdapter {
 
   static async init(
     keyRef = process.env.VAULT_TRANSIT_KEY || "carechain-transit",
-    addr   = process.env.VAULT_ADDR || "http://127.0.0.1:8200",
-    token  = process.env.VAULT_TOKEN || "root"
-  ): Promise<VaultKmsAdapter> {
-    if (!token) throw new Error("VAULT_TOKEN kosong");
+    addr   = process.env.VAULT_ADDR || "",
+    token  = process.env.VAULT_TOKEN || ""
+  ): Promise<KmsAdapter> {
+    if (!addr.startsWith("http")) {
+      console.warn("[VaultKmsAdapter] VAULT_ADDR not set, using DevKmsAdapter (no Vault)");
+      return new DevKmsAdapter();
+    }
+    if (!token) {
+      console.warn("[VaultKmsAdapter] VAULT_TOKEN missing, using DevKmsAdapter");
+      return new DevKmsAdapter();
+    }
     return new VaultKmsAdapter(keyRef, addr, token);
   }
 
