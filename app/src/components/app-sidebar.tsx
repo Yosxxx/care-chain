@@ -46,7 +46,7 @@ export default function AppSidebar({
     },
     {
       label: "Website",
-      href: "/website",
+      href: "https://carechain-landing.vercel.app/",
       icon: <Globe className="w-4 h-4" />,
     },
   ];
