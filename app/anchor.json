@@ -1193,33 +1193,138 @@
   "errors": [
     {
       "code": 6000,
-      "name": "AlreadyRevoked",
-      "msg": "Trustee is already revoked"
+      "name": "Paused",
+      "msg": "Program is paused"
     },
     {
       "code": 6001,
-      "name": "Unauthorized",
-      "msg": "Unauthorized action — only patient can modify trustees"
+      "name": "UploaderNotHospitalAuthority",
+      "msg": "Uploader must be the hospital authority"
     },
     {
       "code": 6002,
-      "name": "NotFound",
-      "msg": "Trustee not found"
+      "name": "GrantRevoked",
+      "msg": "WRITE grant is revoked"
     },
     {
       "code": 6003,
-      "name": "Revoked",
-      "msg": "Trustee is revoked"
+      "name": "GrantExpired",
+      "msg": "WRITE grant is expired"
     },
     {
       "code": 6004,
-      "name": "ReadOnly",
-      "msg": "Trustee can only issue READ access"
+      "name": "GrantMismatch",
+      "msg": "WRITE grant does not match patient/hospital"
     },
     {
       "code": 6005,
-      "name": "InvalidScope",
-      "msg": "Invalid scope for trustee"
+      "name": "BadSeq",
+      "msg": "Bad sequence number"
+    },
+    {
+      "code": 6006,
+      "name": "SeqOverflow",
+      "msg": "Sequence overflow"
+    },
+    {
+      "code": 6007,
+      "name": "EmptyCidEnc",
+      "msg": "cid_enc is empty"
+    },
+    {
+      "code": 6008,
+      "name": "EmptyMime",
+      "msg": "meta_mime is empty"
+    },
+    {
+      "code": 6009,
+      "name": "SizeZero",
+      "msg": "size_bytes must be > 0"
+    },
+    {
+      "code": 6010,
+      "name": "KmsRefRequired",
+      "msg": "kms_ref must be non-empty when edek_root_algo=Kms"
+    },
+    {
+      "code": 6011,
+      "name": "EdekPatientMissing",
+      "msg": "edek_for_patient is empty"
+    },
+    {
+      "code": 6012,
+      "name": "EdekHospitalMissing",
+      "msg": "edek_for_hospital is empty"
+    },
+    {
+      "code": 6013,
+      "name": "CidTooLong",
+      "msg": "cid_enc too long"
+    },
+    {
+      "code": 6014,
+      "name": "MimeTooLong",
+      "msg": "meta_mime too long"
+    },
+    {
+      "code": 6015,
+      "name": "MetaCidTooLong",
+      "msg": "meta_cid too long"
+    },
+    {
+      "code": 6016,
+      "name": "NoteTooLong",
+      "msg": "note too long"
+    },
+    {
+      "code": 6017,
+      "name": "KmsRefTooLong",
+      "msg": "kms_ref too long"
+    },
+    {
+      "code": 6018,
+      "name": "HospitalIdTooLong",
+      "msg": "Hospital ID too long"
+    },
+    {
+      "code": 6019,
+      "name": "HospitalNameTooLong",
+      "msg": "Hospital name too long"
+    },
+    {
+      "code": 6020,
+      "name": "DoctorNameTooLong",
+      "msg": "Doctor name too long"
+    },
+    {
+      "code": 6021,
+      "name": "DoctorIdTooLong",
+      "msg": "Doctor ID too long"
+    },
+    {
+      "code": 6022,
+      "name": "DiagnosisTooLong",
+      "msg": "Diagnosis too long"
+    },
+    {
+      "code": 6023,
+      "name": "KeywordsTooLong",
+      "msg": "Keywords too long"
+    },
+    {
+      "code": 6024,
+      "name": "DescriptionTooLong",
+      "msg": "Description too long"
+    },
+    {
+      "code": 6025,
+      "name": "PayerMustBePatient",
+      "msg": "Payer must be Patient"
+    },
+    {
+      "code": 6026,
+      "name": "RecordMismatch",
+      "msg": "Record linkage mismatch"
     }
   ],
   "types": [
