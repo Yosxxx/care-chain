@@ -30,6 +30,7 @@ type Rec = {
     diagnosis: string;
     keywords: string;
     description: string;
+    medication: string; // ✅ added field
 };
 
 const SCOPE_READ = 1;
@@ -70,10 +71,8 @@ export default function HospitalReadPage() {
 
     const [patientInput, setPatientInput] = useState("");
     const [patientOk, setPatientOk] = useState<boolean | null>(null);
-
     const [hasGrant, setHasGrant] = useState<boolean | null>(null);
     const [grantExpiresAt, setGrantExpiresAt] = useState<number | null>(null);
-
     const [records, setRecords] = useState<Rec[]>([]);
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState("");
@@ -162,6 +161,7 @@ export default function HospitalReadPage() {
                         diagnosis: "",
                         keywords: "",
                         description: "",
+                        medication: "", // ✅ initialize
                     };
 
                     // auto-load IPFS metadata JSON (no decryption required)
@@ -170,6 +170,7 @@ export default function HospitalReadPage() {
                         base.diagnosis = meta.diagnosis ?? "";
                         base.keywords = meta.keywords ?? "";
                         base.description = meta.description ?? "";
+                        base.medication = meta.medication ?? ""; // ✅ parse medication
                     } catch (err) {
                         console.warn(`Failed to fetch metadata for record ${i}`, err);
                     }
@@ -372,6 +373,12 @@ export default function HospitalReadPage() {
                         <div className="pt-1">
                             <div className="font-medium text-xs text-gray-500">Keywords</div>
                             <p className="text-gray-400">{r.keywords}</p>
+                        </div>
+                    )}
+                    {r.medication && (
+                        <div className="pt-1">
+                            <div className="font-medium text-xs text-gray-500">Medication</div>
+                            <p className="text-gray-400">{r.medication}</p>
                         </div>
                     )}
 

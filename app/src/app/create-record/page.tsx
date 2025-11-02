@@ -42,6 +42,7 @@ export default function CreateRecordPage() {
     diagnosis: "",
     keywords: "",
     description: "",
+    medication: ""
   });
   const [status, setStatus] = useState("");
   const [coSignBase64, setCoSignBase64] = useState("");
@@ -112,6 +113,7 @@ export default function CreateRecordPage() {
     fd.append("diagnosis", meta.diagnosis);
     fd.append("keywords", meta.keywords);
     fd.append("description", meta.description);
+    fd.append("medication", meta.medication);
 
     const r = await fetch("/create-record/enc-upload", { method: "POST", body: fd });
     const text = await r.text();

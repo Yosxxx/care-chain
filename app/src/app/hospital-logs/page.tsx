@@ -7,6 +7,7 @@ import sodium from "libsodium-wrappers";
 import dynamic from "next/dynamic";
 import { useProgram } from "@/hooks/useProgram";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { summarizeRecords } from "@/lib/summarizeRecords"; // ✅ summarizer lib
 
 const WalletMultiButton = dynamic(
     async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
@@ -27,6 +28,7 @@ type Rec = {
     diagnosis: string;
     keywords: string;
     description: string;
+    medication: string;
 };
 
 function deriveNonce(b: Uint8Array, idx: number) {
@@ -52,8 +54,14 @@ export default function HospitalRecordListPage() {
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState("");
     const [filter, setFilter] = useState<"7" | "30" | "all">("all");
-    const [simulateOld, setSimulateOld] = useState(false); // dev test
+    const [simulateOld, setSimulateOld] = useState(false);
     const [status, setStatus] = useState("");
+
+    // 👇 summarization
+    const [summary, setSummary] = useState("");
+    const [summarizing, setSummarizing] = useState(false);
+
+    // viewer state (keep intact)
     const [viewerUrl, setViewerUrl] = useState<string | null>(null);
     const [viewerMime, setViewerMime] = useState<string | null>(null);
     const [textPreview, setTextPreview] = useState<string | null>(null);
@@ -62,6 +70,7 @@ export default function HospitalRecordListPage() {
 
     const disabled = !ready || !program || !hospitalWallet;
 
+    // 🔹 fetch hospital records
     async function fetchHospitalRecords() {
         if (disabled) return;
         setLoading(true);
@@ -69,23 +78,19 @@ export default function HospitalRecordListPage() {
         setRecords([]);
 
         try {
-            // 1) fetch all record accounts
             // @ts-expect-error
             const all = await program!.account.record.all();
 
-            // 2) filter by hospital authority
             const mine = all.filter((r: any) => {
                 const rec = r.account;
                 const hp = rec.hospitalPubkey ?? rec.hospital_pubkey;
                 return hp?.toBase58?.() === hospitalWallet!.toBase58();
             });
 
-            // 3) load metadata
             const out: Rec[] = await Promise.all(
                 mine.map(async (r: any) => {
                     const rec = r.account;
                     const createdAtEpoch = Number(rec.createdAt);
-
                     const base: Rec = {
                         seq: Number(rec.seq ?? 0),
                         pda: r.publicKey.toBase58(),
@@ -100,6 +105,7 @@ export default function HospitalRecordListPage() {
                         diagnosis: "",
                         keywords: "",
                         description: "",
+                        medication: "",
                     };
 
                     try {
@@ -107,11 +113,11 @@ export default function HospitalRecordListPage() {
                         base.diagnosis = meta.diagnosis ?? "";
                         base.keywords = meta.keywords ?? "";
                         base.description = meta.description ?? "";
+                        base.medication = meta.medication ?? "";
                     } catch (err) {
                         console.warn(`Failed to load metadata for record ${base.seq}`, err);
                     }
 
-                    // simulate old records (for testing)
                     if (simulateOld && base.seq % 2 === 0) {
                         base.createdAtEpoch -= 40 * 24 * 3600;
                         base.createdAt = new Date(base.createdAtEpoch * 1000).toLocaleString();
@@ -121,10 +127,7 @@ export default function HospitalRecordListPage() {
                 })
             );
 
-            // sort newest first
             out.sort((a, b) => b.createdAtEpoch - a.createdAtEpoch);
-
-            // filter by time
             const now = Math.floor(Date.now() / 1000);
             let filtered = out;
             if (filter === "7") {
@@ -137,13 +140,27 @@ export default function HospitalRecordListPage() {
 
             setRecords(filtered);
         } catch (e: any) {
-            console.error(e);
             setErr(e?.message ?? String(e));
         } finally {
             setLoading(false);
         }
     }
 
+    // ✅ summarize button
+    async function handleSummarize() {
+        try {
+            setSummarizing(true);
+            setSummary("Summarizing...");
+            const result = await summarizeRecords(records);
+            setSummary(result);
+        } catch (e: any) {
+            setSummary(`❌ ${e?.message ?? String(e)}`);
+        } finally {
+            setSummarizing(false);
+        }
+    }
+
+    // 🧠 decrypt & view (UNCHANGED)
     async function decryptAndView(rec: Rec) {
         try {
             setErr("");
@@ -173,6 +190,7 @@ export default function HospitalRecordListPage() {
                     }),
                 })
             ).json();
+
             if (!unwrap?.dek_b64) throw new Error("Failed to unwrap DEK");
             const DEK = Uint8Array.from(Buffer.from(unwrap.dek_b64, "base64"));
 
@@ -184,6 +202,7 @@ export default function HospitalRecordListPage() {
             const TAG = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
             let off = 0,
                 idx = 0;
+
             while (off < encBuf.length) {
                 const clen = Math.min(chunkSize + TAG, encBuf.length - off);
                 const cipher = encBuf.subarray(off, off + clen);
@@ -232,12 +251,6 @@ export default function HospitalRecordListPage() {
                 <WalletMultiButton />
             </header>
 
-            {!hospitalWallet && (
-                <div className="rounded border border-yellow-600/40 bg-yellow-600/10 p-2 text-yellow-600">
-                    Connect a <b>hospital</b> wallet to view uploaded records.
-                </div>
-            )}
-
             {hospitalWallet && (
                 <div className="flex flex-wrap gap-3 items-center">
                     <button
@@ -265,15 +278,26 @@ export default function HospitalRecordListPage() {
                     >
                         {simulateOld ? "🧪 Simulate OFF" : "🧪 Simulate Old Records"}
                     </button>
+
+                    {/* 🩺 Summarizer button */}
+                    <button
+                        onClick={handleSummarize}
+                        disabled={!records.length || summarizing}
+                        className="rounded-md border px-3 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                        {summarizing ? "Summarizing…" : "Summarize Records"}
+                    </button>
                 </div>
             )}
 
-            {status && <p className="text-xs opacity-70">{status}</p>}
-            {err && <p className="text-red-600 text-sm">{err}</p>}
-
-            {records.length === 0 && !loading && hospitalWallet && (
-                <p className="text-gray-400">No records found for this filter.</p>
+            {summary && (
+                <div className="border rounded-md p-4 bg-gray-900/40 text-gray-100 whitespace-pre-wrap">
+                    <h2 className="font-semibold mb-2">🩺 LLM Summary</h2>
+                    {summary}
+                </div>
             )}
+
+            {err && <p className="text-red-600 text-sm">{err}</p>}
 
             {records.map((r, i) => (
                 <div key={r.pda} className="border rounded-lg p-4 shadow-sm space-y-2">
@@ -311,6 +335,12 @@ export default function HospitalRecordListPage() {
                             <p className="text-gray-400">{r.keywords}</p>
                         </div>
                     )}
+                    {r.medication && (
+                        <div className="pt-1">
+                            <div className="font-medium text-xs text-gray-500">Medication</div>
+                            <p className="text-gray-400">{r.medication}</p>
+                        </div>
+                    )}
 
                     <div className="pt-2 border-t">
                         <button
@@ -323,6 +353,7 @@ export default function HospitalRecordListPage() {
                 </div>
             ))}
 
+            {/* 🧩 viewer (untouched) */}
             {openViewer && viewerUrl && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur flex flex-col z-[9999]">
                     <div className="flex items-center gap-3 bg-black/40 text-white p-3">

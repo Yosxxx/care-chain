@@ -46,6 +46,7 @@ export async function POST(req: Request) {
   let diagnosis: string = "";
   let keywords: string = "";
   let description: string = "";
+  let medication: string  = "";
 
   try {
     const form = await req.formData();
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     diagnosis     = (form.get("diagnosis")     as string) || "";
     keywords      = (form.get("keywords")      as string) || "";
     description   = (form.get("description")   as string) || "";
+    medication   = (form.get("medication")   as string) || "";
 
     if (!file)                return fail("A: file missing", new Error("file missing"), 400);
     if (!patientPk_b64)       return fail("A: patientPk_b64 missing", new Error("patientPk_b64 missing"), 400);
@@ -178,6 +180,7 @@ export async function POST(req: Request) {
       diagnosis,
       keywords,
       description,
+      medication,
     };
 
     const metaPin = await pinata.pinJSONToIPFS(meta, {
